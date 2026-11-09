@@ -20,6 +20,8 @@ export async function playEvents(board, prev, events, ui = {}) {
   board.clearPoses();
 
   for (const ev of events) {
+    // eventos de unidades que não existem neste modelo (ex.: inimigos de uma fase nova) não se animam
+    if ((ev.id && !m.units[ev.id]) || (ev.by && !m.units[ev.by])) continue;
     if (rope && ev.t !== 'hook' && ev.t !== 'pull') stopRope();
     switch (ev.t) {
       case 'move':

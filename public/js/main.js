@@ -1,4 +1,5 @@
-import { createMatch, play, activePlayer, telegraph, toPayload, other, MAX_TURNS } from '/shared/rules.js';
+import { createMatch, play, activePlayer, telegraph, toPayload, other, summarize, MAX_TURNS } from '/shared/rules.js';
+import { createCoopRun, resolveRound, pickUpgrade, previewRound, telegraphs, UPGRADES, KINDS, HUMAN_IDS, COOP_SIZE } from '/shared/coop.js';
 import { Board, confetti } from './render.js';
 import { Input } from './input.js';
 import { playEvents } from './anim.js';
@@ -10,21 +11,35 @@ const ACT_NAME = { PUSH: 'Empurrão', HOOK: 'Gancho', DASH: 'Investida', WAIT: '
 const ACT_ICON = { PUSH: '🥊', HOOK: '🪝', DASH: '💨', WAIT: '💤' };
 
 // Faixa que explica a ordem de resolução: quem age, com qual golpe e por quê.
-function makeOrderUi(el) {
+const sideClass = (id) => (id === 'p1' || id === 'h1' ? 'p1' : id === 'p2' || id === 'h2' ? 'p2' : 'bot');
+function makeOrderUi(el, nameOf = (id) => NAME[id], coop = false, shortOf = nameOf) {
+  // no coop a faixa fica logo abaixo do tabuleiro, por cima dos botões (desativados durante a resolução)
+  const place = () => {
+    if (!coop) return;
+    const wrap = document.querySelector('#board');
+    el.style.top = `${wrap.offsetTop + wrap.offsetHeight + 8}px`;
+  };
   return {
     show(order) {
-      const chips = order.map((o, i) => `<span class="chip ${o.pid}"><b>${i + 1}</b>${ACT_ICON[o.type]} ${ACT_NAME[o.type]} <small>${NAME[o.pid]}</small></span>`).join('<i class="arr">→</i>');
+      // no coop são muitos golpes: chips compactos (número, ícone e sigla de quem age)
+      const chips = order.map((o, i) => (coop
+        ? `<span class="chip ${sideClass(o.pid)}"><b>${i + 1}</b>${ACT_ICON[o.type]}<small>${shortOf(o.pid)}</small></span>`
+        : `<span class="chip ${sideClass(o.pid)}"><b>${i + 1}</b>${ACT_ICON[o.type]} ${ACT_NAME[o.type]} <small>${nameOf(o.pid)}</small></span>`)).join(coop ? '' : '<i class="arr">→</i>');
       let why = '';
       const [a, b] = order;
-      if (a && b && a.type !== 'WAIT' && b.type !== 'WAIT') {
+      if (coop) {
+        why = 'Investida → Gancho → Empurrão. Empate: os bots vão primeiro';
+      } else if (a && b && a.type !== 'WAIT' && b.type !== 'WAIT') {
         why = a.type === b.type ? 'Mesmo golpe: quem atacou vai primeiro' : `${ACT_NAME[a.type]} vem antes de ${ACT_NAME[b.type]}`;
       } else if (a && b) {
         why = 'Esperar fica por último';
       }
       el.innerHTML = `<div class="chips">${chips}</div><div class="why">${why}</div>`;
+      place();
       el.classList.add('on');
     },
-    step(n) { el.querySelectorAll('.chip').forEach((c, i) => c.classList.toggle('now', i === n - 1)); },
+    step(n) {
+      place(); el.querySelectorAll('.chip').forEach((c, i) => c.classList.toggle('now', i === n - 1)); },
     clear() { el.classList.remove('on'); },
   };
 }
@@ -108,6 +123,7 @@ class Game {
     this.state = state;
     this.matchId = matchId;
     this.lastPid = null;
+    document.querySelector('.rule').textContent = 'Ordem dos golpes: Investida → Gancho → Empurrão. Empate: quem atacou vai primeiro.';
     $('#log').innerHTML = '';
     $('#wait').hidden = true;
     $('#end').hidden = true;
@@ -188,6 +204,231 @@ class Game {
   }
 }
 
+const UPGRADE_BY_ID = Object.fromEntries(UPGRADES.map((u) => [u.id, u]));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Modo coop: dois jogadores (h1 Azul, h2 Vermelho) contra bots, por fases.
+// Local: um aparelho controla os dois (um planeja, depois o outro). Online: cada um controla o seu (me = 'h1' | 'h2').
+class CoopGame {
+  constructor(mode, me) {
+    this.mode = mode;
+    this.me = me;
+    this.state = null;
+    this.plans = {};
+    this.busy = false;
+    this.board = new Board($('#board'), (p) => this.input.tap(p), COOP_SIZE);
+    applyView();
+    this.orderEl = document.createElement('div');
+    document.querySelectorAll('#game > .order').forEach((o) => o.remove());
+    this.orderEl.className = 'order coop';
+    $('#game').appendChild(this.orderEl);
+    this.orderUi = makeOrderUi(this.orderEl, (id) => this.nameOf(id), true, (id) => this.shortOf(id));
+    this.input = new Input(
+      this.board,
+      { bar: $('#bar'), acts: [...document.querySelectorAll('.act')], moveBtn: $('#btn-move'), confirm: $('#btn-confirm'), hint: $('#hint'), preview: $('#preview'), clear: $('#btn-clear'), steps: $('#steps') },
+      (p) => this.submit(p),
+      () => this.draw(),
+      { preview: (s, pid, p) => this.preview(s, pid, p), describe: (o) => this.describe(o) },
+    );
+  }
+
+  nameOf(id) {
+    if (id === 'h1') return 'Azul';
+    if (id === 'h2') return 'Vermelho';
+    const u = this.state && this.state.units[id];
+    return `${(u && KINDS[u.kind] ? KINDS[u.kind].nome : 'Bot')} ${id.slice(1)}`;
+  }
+
+  // Sigla curta para os chips de ordem: Az/Ve (humanos) e B1, F2, I3, C1 (bots).
+  shortOf(id) {
+    if (id === 'h1') return 'Az';
+    if (id === 'h2') return 'Ve';
+    const u = this.state && this.state.units[id];
+    return `${({ brute: 'B', hooker: 'F', dasher: 'I', boss: 'C' })[u && u.kind] || '?'}${id.slice(1)}`;
+  }
+
+  // Prévia da rodada com o plano que o jogador está montando (e o do parceiro, se já planejou).
+  preview(state, pid, plan) {
+    const partner = HUMAN_IDS.find((id) => id !== pid);
+    const r = previewRound(state, pid, plan, this.plans[partner] || null);
+    return r ? { ...r, assumed: !this.plans[partner] } : null;
+  }
+
+  describe(out) {
+    const s = summarize(out.events);
+    const parts = [];
+    for (const id of Object.keys(out.state.units)) {
+      const bits = [];
+      if (s.dmg[id]) bits.push(`−${s.dmg[id]} ❤️`);
+      if (s.fell.includes(id)) bits.push('cai da ilha');
+      else if (s.ko.includes(id)) bits.push(id.startsWith('h') ? 'fica sem vidas' : 'é derrotado');
+      else if (s.moved.includes(id)) bits.push('é deslocado');
+      if (bits.length) parts.push(`${this.nameOf(id)} ${bits.join(', ')}`);
+    }
+    const head = out.assumed ? 'Se o parceiro ficar parado' : 'Resultado';
+    return `${head}: ${parts.length ? parts.join(' · ') : 'nenhum efeito'}`;
+  }
+
+  draw() {
+    if (!this.state) return;
+    const s = this.state;
+    const view = this.input.view();
+    view.extra = s.phase === 'PLAN' ? telegraphs(s) : [];
+    this.board.draw(s, view);
+    const planner = this.input.active ? this.input.pid : null;
+    document.querySelector('.pl.p1').classList.toggle('active', planner === 'h1');
+    document.querySelector('.pl.p2').classList.toggle('active', planner === 'h2');
+    const bots = Object.values(s.units).filter((u) => u.team === 'bots' && u.alive).length;
+    $('#turn').textContent = `Fase ${s.stage} · Rodada ${s.round} · ${bots} inimigo${bots === 1 ? '' : 's'}`;
+  }
+
+  banner(text, alert = false) {
+    const b = $('#banner');
+    b.textContent = text;
+    b.classList.toggle('alert', alert);
+  }
+
+  showUps(uid) {
+    const el = $('#ups');
+    const u = uid && this.state.units[uid];
+    const list = u ? Object.entries(u.ups || {}).filter(([, n]) => n > 0).map(([id, n]) => `${UPGRADE_BY_ID[id].icon}${n > 1 ? '×' + n : ''}`).join(' ') : '';
+    el.hidden = !u;
+    fitBoard();
+    el.textContent = u ? `${this.nameOf(uid)} · melhorias: ${list || 'nenhuma ainda'}` : '';
+  }
+
+  addLog(text) {
+    const li = document.createElement('li');
+    li.textContent = text;
+    const ol = $('#log');
+    ol.prepend(li);
+    while (ol.children.length > 10) ol.lastChild.remove();
+  }
+
+  logLine(prev, events) {
+    const parts = [];
+    for (const e of events) {
+      if (e.t === 'hit') parts.push(`${this.nameOf(e.id)} −${e.dmg}❤️`);
+      else if (e.t === 'ko' && String(e.id).startsWith('e')) parts.push(`${this.nameOf(e.id)} derrotado`);
+      else if (e.t === 'fall') parts.push(`${this.nameOf(e.id)} caiu`);
+      else if (e.t === 'crackBreak') parts.push('a casa quebrou');
+      else if (e.t === 'shield') parts.push(`${this.nameOf(e.id)} se protegeu`);
+      else if (e.t === 'stageClear') parts.push('fase limpa!');
+    }
+    return `F${prev.stage} R${prev.round} · ${parts.length ? parts.join(' · ') : 'sem acertos'}`;
+  }
+
+  start(state) {
+    this.state = state;
+    this.plans = {};
+    document.querySelector('.rule').textContent = 'Ordem dos golpes: Investida → Gancho → Empurrão. Empate: os bots vão primeiro.';
+    $('#log').innerHTML = '';
+    $('#end').hidden = true;
+    $('#wait').hidden = true;
+    this.splash(state.stage);
+    this.refresh();
+  }
+
+  splash(stage) {
+    const boss = stage % 5 === 0;
+    const el = $('#splash');
+    el.textContent = boss ? `FASE ${stage}\nCHEFÃO!` : `FASE ${stage}`;
+    el.style.whiteSpace = 'pre-line';
+    el.classList.remove('on');
+    void el.offsetWidth;
+    el.classList.add('on');
+  }
+
+  refresh() {
+    const s = this.state;
+    this.draw();
+    $('#upgrade').hidden = true;
+    if (s.phase === 'OVER') return this.finish();
+    if (s.phase === 'UPGRADE') { this.input.end(); this.showUps(null); return this.showUpgrades(); }
+    const need = HUMAN_IDS.filter((id) => s.units[id].alive && !this.plans[id]);
+    if (!need.length) return this.resolve();
+    const who = this.mode === 'local' ? need[0] : this.me;
+    this.banner(`${this.nameOf(who)}: ande e escolha um golpe`, false);
+    this.input.begin(s, who);
+    this.showUps(who);
+    this.draw();
+  }
+
+  submit(play) {
+    this.plans[this.input.pid] = play;
+    this.refresh();
+  }
+
+  resolve() {
+    const r = resolveRound(this.state, this.plans);
+    this.plans = {};
+    this.apply(r);
+  }
+
+  apply(msg) {
+    this.queue = (this.queue || Promise.resolve()).then(() => this.run(msg)).catch((e) => console.error(e));
+    return this.queue;
+  }
+
+  async run({ state, events }) {
+    this.busy = true;
+    this.input.end();
+    this.banner('Resolvendo…');
+    const prev = this.state;
+    // a abertura de uma fase nova não se anima (os inimigos ainda não existem na tela): só mostra a abertura
+    const cut = events.findIndex((e) => e.t === 'stageStart');
+    await playEvents(this.board, prev, cut < 0 ? events : events.slice(0, cut), this.orderUi);
+    if (events.some((e) => e.t === 'order')) this.addLog(this.logLine(prev, events));
+    this.state = state;
+    this.busy = false;
+    if (cut >= 0) { this.splash(state.stage); await sleep(900); }
+    this.refresh();
+  }
+
+  // Tela de melhorias: no local, um jogador por vez; no online, só o meu.
+  showUpgrades() {
+    const s = this.state;
+    const pending = HUMAN_IDS.filter((id) => !s.picks[id]);
+    if (!pending.length) return;
+    const uid = this.mode === 'local' ? pending[0] : this.me;
+    if (this.mode === 'online' && s.picks[uid]) { this.banner('Aguardando o parceiro escolher…'); return; }
+    this.banner(`Fase ${s.stage} limpa! ${this.nameOf(uid)}, escolha sua melhoria`);
+    sfx.win();
+    const u = s.units[uid];
+    $('#upgrade-title').textContent = `${this.nameOf(uid)}: escolha uma melhoria`;
+    const box = $('#upgrade-cards');
+    box.innerHTML = '';
+    for (const id of s.offers[uid]) {
+      const up = UPGRADE_BY_ID[id];
+      const n = (u.ups || {})[id] || 0;
+      const b = document.createElement('button');
+      b.className = 'ucard';
+      b.innerHTML = `<i>${up.icon}</i><span><b>${up.nome}</b><small>${up.desc}</small>${up.fallback ? '' : `<em>nível ${n} → ${n + 1} (máx. ${up.max})</em>`}</span>`;
+      b.onclick = () => this.pick(uid, id);
+      box.appendChild(b);
+    }
+    $('#upgrade').hidden = false;
+  }
+
+  pick(uid, id) {
+    sfx.confirm();
+    $('#upgrade').hidden = true;
+    if (this.mode === 'local') this.apply(pickUpgrade(this.state, uid, id));
+    // online: ver Etapa 5
+  }
+
+  finish() {
+    const s = this.state;
+    sfx.draw();
+    $('#end-title').textContent = 'Derrota!';
+    $('#end-sub').textContent = `Vocês chegaram até a fase ${s.result ? s.result.stage : s.stage}.`;
+    this.banner('');
+    this.showUps(null);
+    $('#end-again').disabled = false;
+    $('#end').hidden = false;
+  }
+}
+
 // Tabuleiro na visão de cima (blocos 2D).
 const VIEWS = { flat: { tx: 0, rz: 0, wf: 1, hf: 1, by: 0.5 } };
 const viewKey = 'flat';
@@ -225,13 +466,19 @@ window.addEventListener('resize', fitBoard);
 window.addEventListener('orientationchange', () => setTimeout(fitBoard, 150));
 if ('ResizeObserver' in window) {
   const ro = new ResizeObserver(() => fitBoard());
-  ['.hud', '#banner', '#bar', '.log'].forEach((q) => { const el = document.querySelector(q); if (el) ro.observe(el); });
+  ['.hud', '#banner', '#bar', '.log', '#ups'].forEach((q) => { const el = document.querySelector(q); if (el) ro.observe(el); });
 }
 
 function show(id) {
   $('#menu').hidden = id !== 'menu';
   $('#game').hidden = id !== 'game';
   if (id === 'game') requestAnimationFrame(() => { fitBoard(); fitBoard(); });
+}
+
+function startCoopLocal() {
+  game = new CoopGame('local', null);
+  show('game');
+  game.start(createCoopRun(Date.now() & 0xffffff).state);
 }
 
 function startLocal() {
@@ -264,6 +511,7 @@ function ensureSocket() {
 function menuMsg(t) { $('#menu-msg').textContent = t; }
 
 $('#btn-local').onclick = () => { unlock(); startLocal(); };
+$('#btn-coop-local').onclick = () => { unlock(); startCoopLocal(); };
 
 $('#btn-create').onclick = () => {
   unlock();
@@ -300,12 +548,15 @@ $('#btn-join').onclick = () => {
 };
 
 $('#end-again').onclick = () => {
-  if (game.mode === 'local') { $('#end').hidden = true; startLocal(); }
+  if (game instanceof CoopGame && game.mode === 'local') { $('#end').hidden = true; startCoopLocal(); }
+  else if (game.mode === 'local') { $('#end').hidden = true; startLocal(); }
   else { socket.emit('match:rematch'); $('#end-sub').textContent = 'Aguardando o rival aceitar…'; }
 };
 $('#end-menu').onclick = () => {
   $('#end').hidden = true;
-  if (game instanceof Game) game.input.end();
+  if (game && game.input) game.input.end();
+  $('#ups').hidden = true;
+  $('#upgrade').hidden = true;
   if (socket) { socket.disconnect(); socket = null; }
   game = null;
   menuMsg('');
@@ -314,7 +565,7 @@ $('#end-menu').onclick = () => {
 $('#btn-mute').onclick = (e) => { e.currentTarget.textContent = toggleMute() ? '🔇' : '🔊'; };
 $('#btn-mute').textContent = isMuted() ? '🔇' : '🔊';
 document.addEventListener('keydown', (e) => {
-  if (!(game instanceof Game) || (e.target && e.target.tagName === 'INPUT')) return;
+  if (!(game && game.input) || (e.target && e.target.tagName === 'INPUT')) return;
   if (game.input.key(e)) e.preventDefault();
 });
 // Link de convite: /?sala=ABCD preenche o código.

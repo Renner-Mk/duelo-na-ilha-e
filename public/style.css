@@ -557,3 +557,24 @@ html{overflow-x:hidden}
 .boss .f-eyes .white{fill:#ffe3e3}
 .boss .f-eyes .f-pupil{fill:#ff2d3d}
 .unit.kind-boss .fighter{width:150%;height:150%;margin-top:-30%}
+
+/* ===== coop: melhorias, abertura de fase e faixa de melhorias ===== */
+.ups{margin:0;width:100%;text-align:center;font-weight:600;font-size:.9rem;background:rgba(255,255,255,.7);border-radius:12px;padding:3px 10px}
+.ucards{display:grid;gap:10px;width:100%}
+.ucard{display:flex;gap:12px;align-items:center;text-align:left;border:0;border-radius:18px;background:#fff6c9;padding:10px 14px;box-shadow:0 5px 0 var(--yellow-d);cursor:pointer;font:inherit;color:var(--ink);min-height:64px}
+.ucard:active{transform:translateY(3px);box-shadow:0 2px 0 var(--yellow-d)}
+.ucard i{font-style:normal;font-size:2rem;line-height:1}
+.ucard b{display:block;font-size:1.05rem}
+.ucard small{display:block;opacity:.8;font-size:.85rem}
+.ucard em{font-style:normal;opacity:.6;font-size:.78rem}
+#splash{position:fixed;inset:0;display:grid;place-items:center;z-index:55;pointer-events:none;opacity:0;font:700 clamp(2.4rem,12vw,4.5rem) var(--font);text-align:center;color:#fff;-webkit-text-stroke:7px var(--ink);paint-order:stroke fill;text-shadow:0 8px 0 var(--ink);padding:20px}
+#splash.on{animation:splashIn 1.3s ease-out forwards}
+@keyframes splashIn{0%{opacity:0;transform:scale(.4) rotate(-6deg)}20%{opacity:1;transform:scale(1.1) rotate(2deg)}70%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1.15)}}
+.order .chip.bot{background:#8a5be0}
+
+/* faixa de ordem do coop: abaixo do tabuleiro e compacta, para não cobrir os personagens */
+#game{position:relative}
+.order.coop{position:absolute;z-index:30;bottom:auto;top:0;max-width:100%}
+.order.coop .chips{gap:4px}
+.order.coop .chip{padding:3px 7px;font-size:.78rem;gap:3px}
+.order.coop .why{font-size:.72rem}

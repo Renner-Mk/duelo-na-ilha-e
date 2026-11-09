@@ -267,6 +267,7 @@ export class Board {
 
   // Pulo curto ao andar (squash and stretch) no desenho do personagem.
   hop(id) {
+    if (!this.units[id]) return;
     const f = this.units[id].querySelector('.fighter');
     f.animate(
       [
@@ -282,6 +283,7 @@ export class Board {
 
   // Investida do corpo todo na direção do golpe.
   lunge(id, dir) {
+    if (!this.units[id]) return;
     const [dx, dy] = DIRS[dir];
     this.units[id].animate(
       [
@@ -297,6 +299,7 @@ export class Board {
   // Liga uma pose (classe CSS) por um tempo: punch, throw, lift, cheer.
   pose(id, cls, ms = 450) {
     const el = this.units[id];
+    if (!el) return;
     el.classList.remove(cls);
     void el.offsetWidth;
     el.classList.add(cls);
@@ -416,6 +419,7 @@ export class Board {
 
   hurt(id) {
     const el = this.units[id];
+    if (!el) return;
     el.classList.remove('hurt');
     void el.offsetWidth;
     el.classList.add('hurt');
