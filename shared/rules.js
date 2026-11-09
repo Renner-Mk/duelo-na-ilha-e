@@ -54,7 +54,7 @@ export const mod = (u, key) => (u && u.mods && u.mods[key]) || 0;
 export const other = (pid) => (pid === 'p1' ? 'p2' : 'p1');
 export const clone = (s) => JSON.parse(JSON.stringify(s));
 
-function rng(seed) {
+export function rng(seed) {
   let a = seed >>> 0;
   return () => {
     a = (a + 0x6d2b79f5) >>> 0;

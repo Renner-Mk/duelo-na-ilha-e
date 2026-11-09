@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "node server/index.js",
-    "check": "node scripts/rules-check.mjs"
+    "check": "node scripts/rules-check.mjs && node scripts/coop-check.mjs"
   },
   "dependencies": {
     "express": "^4.21.0",
