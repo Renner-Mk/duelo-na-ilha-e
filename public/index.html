@@ -38,7 +38,7 @@
       <summary>Como jogar</summary>
       <ol>
         <li>O <b>atacante</b> anda 1 casa (se quiser) e escolhe um golpe. O rival vê a mira vermelha.</li>
-        <li>O <b>reator</b> também anda e escolhe um golpe. Os dois golpes aparecem marcados com a ordem e resolvem assim: Pedra, depois Gancho, depois Empurrão (empate: quem reagiu vai primeiro).</li>
+        <li>O <b>reator</b> também anda e escolhe um golpe. Os dois golpes aparecem marcados com a ordem e resolvem assim: Investida, depois Gancho, depois Empurrão (empate: quem atacou vai primeiro).</li>
         <li>Se o atacante for puxado ou empurrado, o golpe sai do lugar onde ele estiver.</li>
         <li>Terreno: 🏔️ montanha (2 golpes para quebrar), casa rachada (quebra e vira buraco se alguém for jogado nela; ninguém anda nela), 🍄 mola (quem for empurrado nela voa mais 2 casas).</li>
         <li>Zere o HP do rival ou jogue ele pra fora da ilha ou num buraco.</li>
@@ -61,12 +61,12 @@
       <div class="acts" role="group" aria-label="Ação">
         <button class="act" data-act="PUSH"><i>🥊</i><span>Empurrão</span><kbd>1</kbd></button>
         <button class="act" data-act="HOOK"><i>🪝</i><span>Gancho</span><kbd>2</kbd></button>
-        <button class="act" data-act="ROCK"><i>🪨</i><span>Pedra</span><kbd>3</kbd></button>
+        <button class="act" data-act="DASH"><i>💨</i><span>Investida</span><kbd>3</kbd></button>
         <button class="act" data-act="WAIT"><i>💤</i><span>Esperar</span><kbd>4</kbd></button>
       </div>
       <p id="hint" class="hint"></p>
       <p id="preview" class="preview empty"></p>
-      <p class="rule">Ordem dos golpes: Pedra → Gancho → Empurrão. Empate: quem reagiu vai primeiro.</p>
+      <p class="rule">Ordem dos golpes: Investida → Gancho → Empurrão. Empate: quem atacou vai primeiro.</p>
       <div class="row">
         <button class="btn" id="btn-move">Mover</button>
         <button class="btn" id="btn-clear" disabled>Limpar</button>

@@ -59,6 +59,7 @@ export const sfx = {
   place: () => { tone(200, 60, 0.15, 'square', 0.18); noise(0.05, 0.15, 0.08); },
   rockBreak: () => { noise(0.22, 0.28); tone(150, 40, 0.22, 'sawtooth', 0.12); },
   whiff: () => noise(0.12, 0.08),
+  dash: () => { noise(0.14, 0.12); tone(220, 720, 0.16, 'sawtooth', 0.1); },
   spring: () => { tone(200, 900, 0.12, 'sine', 0.18); tone(900, 300, 0.2, 'triangle', 0.12, 0.1); },
   fall: () => tone(700, 60, 0.7, 'sine', 0.16),
   win: () => [523, 659, 784, 1047].forEach((f, i) => tone(f, f, 0.18, 'square', 0.12, i * 0.12)),

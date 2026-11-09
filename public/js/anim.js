@@ -89,9 +89,16 @@ export async function playEvents(board, prev, events, ui = {}) {
         m.units[ev.id].pos = ev.to; rope?.to(ev.to);
         if (!pulled) sfx.pull();
         pulled = true; draw(); await wait(280); break;
-      case 'place':
-        board.pose(ev.by, 'lift', 480);
-        m.rocks.push({ pos: ev.at, hp: 1 }); board.burst(ev.at, 'dust', 6); sfx.place(); draw(); await wait(300); break;
+      case 'dash':
+        angry = ev.id;
+        board.pose(ev.id, 'punch', 380);
+        board.burst(ev.from, 'dust', 8);
+        m.units[ev.id].pos = ev.to; sfx.dash(); draw(); await wait(320);
+        board.burst(ev.to, 'dust', 4); break;
+      case 'charge':
+        angry = ev.by;
+        board.lunge(ev.by, ev.dir); board.pose(ev.by, 'punch', 380);
+        board.burst(ev.tile, 'star', 6); sfx.punch(); draw(); await wait(280); break;
       case 'fizzle':
         await wait(150); break;
       case 'whiff':

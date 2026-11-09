@@ -1,7 +1,7 @@
 import { SIZE, isHole, DIRS } from '/shared/rules.js';
 import { fighterSVG, GLOVE_SVG } from './fighters.js';
 
-const GLYPH = { PUSH: '🥊', HOOK: '🪝', ROCK: '🪨' };
+const GLYPH = { PUSH: '🥊', HOOK: '🪝', DASH: '💨' };
 const NS = 'http://www.w3.org/2000/svg';
 const pct = (n) => `${n * 20}%`;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

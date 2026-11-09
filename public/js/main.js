@@ -6,8 +6,8 @@ import { sfx, unlock, toggleMute, isMuted } from './sfx.js';
 
 const $ = (s) => document.querySelector(s);
 const NAME = { p1: 'Azul', p2: 'Vermelho' };
-const ACT_NAME = { PUSH: 'Empurrão', HOOK: 'Gancho', ROCK: 'Pedra', WAIT: 'Esperar' };
-const ACT_ICON = { PUSH: '🥊', HOOK: '🪝', ROCK: '🪨', WAIT: '💤' };
+const ACT_NAME = { PUSH: 'Empurrão', HOOK: 'Gancho', DASH: 'Investida', WAIT: 'Esperar' };
+const ACT_ICON = { PUSH: '🥊', HOOK: '🪝', DASH: '💨', WAIT: '💤' };
 
 // Faixa que explica a ordem de resolução: quem age, com qual golpe e por quê.
 function makeOrderUi(el) {
@@ -17,7 +17,7 @@ function makeOrderUi(el) {
       let why = '';
       const [a, b] = order;
       if (a && b && a.type !== 'WAIT' && b.type !== 'WAIT') {
-        why = a.type === b.type ? 'Mesmo golpe: quem reagiu vai primeiro' : `${ACT_NAME[a.type]} vem antes de ${ACT_NAME[b.type]}`;
+        why = a.type === b.type ? 'Mesmo golpe: quem atacou vai primeiro' : `${ACT_NAME[a.type]} vem antes de ${ACT_NAME[b.type]}`;
       } else if (a && b) {
         why = 'Esperar fica por último';
       }
@@ -34,6 +34,7 @@ function logLine(turn, events) {
   const hasOrder = events.some((e) => e.t === 'order');
   for (const e of events) {
     if (e.t === 'move') parts.push(`${NAME[e.id]} andou`);
+    else if (e.t === 'dash') parts.push(`${NAME[e.id]} avançou`);
     else if (e.t === 'telegraph' && !hasOrder) parts.push(`${NAME[e.by]} marcou ${ACT_NAME[e.type]}`);
     else if (e.t === 'telegraph') parts.push(`${NAME[e.by]} reagiu com ${ACT_NAME[e.type]}`);
     else if (e.t === 'hit') parts.push(`${NAME[e.id]} −${e.dmg}❤️`);

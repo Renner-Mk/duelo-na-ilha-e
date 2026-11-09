@@ -14,9 +14,10 @@ export const DIRS = {
   RIGHT: [1, 0],
 };
 export const DIR_NAMES = Object.keys(DIRS);
-export const ACTIONS = ['PUSH', 'HOOK', 'ROCK', 'WAIT'];
-// Iniciativa: quanto menor, mais cedo resolve. Pedra monta o terreno, gancho reposiciona, empurrão fecha.
-export const PRIORITY = { ROCK: 1, HOOK: 2, PUSH: 3, WAIT: 4 };
+export const ACTIONS = ['PUSH', 'HOOK', 'DASH', 'WAIT'];
+export const DASH_RANGE = 2;
+// Iniciativa: quanto menor, mais cedo resolve. Investida e gancho reposicionam; o empurrão fecha.
+export const PRIORITY = { DASH: 1, HOOK: 2, PUSH: 3, WAIT: 4 };
 
 // Mapas: cada um descreve metade; o resto é espelhado por rotação de 180° (justo para os dois lados).
 // holes = buracos; mtn = montanhas (2 HP); cracks = casas rachadas; springs = molas.
@@ -82,10 +83,6 @@ export function isFree(s, p) {
 export function canStand(s, p) {
   return isFree(s, p) && !isCrack(s, p);
 }
-// Pedra só em casa livre comum (sem rachadura nem mola).
-export function placeable(s, p) {
-  return canStand(s, p) && !isSpring(s, p);
-}
 
 // Quem deve jogar agora.
 export function activePlayer(s) {
@@ -136,7 +133,6 @@ export function legalDirs(s, type, from) {
   return DIR_NAMES.filter((d) => {
     const t = add(from, DIRS[d]);
     if (!inBounds(t)) return false;
-    if (type === 'ROCK') return placeable(s, t);
     return true;
   });
 }
@@ -287,11 +283,39 @@ function doHook(s, actor, d, ev) {
   }
 }
 
-function doRock(s, actor, d, ev) {
-  const tile = add(actor.pos, DIRS[d]);
-  if (!placeable(s, tile)) return ev.push({ t: 'fizzle', by: actor.id, at: tile });
-  s.rocks.push({ pos: tile, hp: 1 });
-  ev.push({ t: 'place', by: actor.id, at: tile });
+// Caminho da investida: até DASH_RANGE casas; para antes de borda ou pedra, e se encontrar um rival
+// no caminho para colado nele e o atinge. Buraco e casa rachada NÃO bloqueiam: quem entra neles cai.
+export function dashPath(s, from, d) {
+  const tiles = [];
+  let hit = null;
+  let falls = false;
+  let p = from;
+  for (let i = 0; i < DASH_RANGE; i++) {
+    const next = add(p, DIRS[d]);
+    if (!inBounds(next) || rockAt(s, next)) break;
+    const u = unitAt(s, next);
+    if (u) { hit = u; break; }
+    tiles.push(next);
+    p = next;
+    if (isHole(s, next) || isCrack(s, next)) { falls = true; break; } // cai ali e a investida termina
+  }
+  return { tiles, hit, falls };
+}
+
+function doDash(s, actor, d, ev) {
+  const { tiles, hit } = dashPath(s, actor.pos, d);
+  if (tiles.length) {
+    const from = [...actor.pos];
+    actor.pos = [...tiles[tiles.length - 1]];
+    ev.push({ t: 'dash', id: actor.id, from, to: [...actor.pos], dir: d });
+    if (land(s, actor, ev)) return; // buraco ou casa rachada: cai e perde
+  }
+  if (hit) {
+    ev.push({ t: 'charge', by: actor.id, dir: d, tile: [...hit.pos] });
+    damageUnit(s, hit, 1, ev, 'dash');
+    return knockback(s, hit, d, ev);
+  }
+  if (!tiles.length) ev.push({ t: 'whiff', by: actor.id, at: add(actor.pos, DIRS[d]) });
 }
 
 function runAction(s, pid, type, d, ev) {
@@ -299,7 +323,7 @@ function runAction(s, pid, type, d, ev) {
   if (!actor.alive) return;
   if (type === 'PUSH') doPush(s, actor, d, ev);
   else if (type === 'HOOK') doHook(s, actor, d, ev);
-  else if (type === 'ROCK') doRock(s, actor, d, ev);
+  else if (type === 'DASH') doDash(s, actor, d, ev);
   else ev.push({ t: 'wait', by: pid });
 }
 
@@ -345,11 +369,13 @@ export function react(state, pid, play) {
   const s = clone(state);
   const ev = [];
   applyMove(s, pid, play.movement, ev);
-  // As duas ações ficam telegrafadas e resolvem por prioridade (empate: quem reagiu vai primeiro).
+  // As duas ações ficam telegrafadas e resolvem por prioridade (empate: quem atacou vai primeiro).
+  // Assim o reator não ganha só por entrar colado e bater antes: ele precisa sair da casa mirada.
   const mine = { pid, type: play.action.type, dir: play.action.direction || null };
   ev.push({ t: 'telegraph', by: pid, type: mine.type, dir: mine.dir });
-  const queue = [mine];
-  if (s.pending) queue.push({ ...s.pending });
+  const queue = [];
+  if (s.pending) queue.push({ ...s.pending }); // o atacante entra primeiro: vence os empates (sort estável)
+  queue.push(mine);
   queue.sort((a, b) => PRIORITY[a.type] - PRIORITY[b.type]);
   ev.push({ t: 'order', order: queue.map((q) => ({ pid: q.pid, type: q.type, dir: q.dir })) });
   s.pending = null;
@@ -388,6 +414,11 @@ export function actionPreview(s, pid, type, d) {
   if (type === 'HOOK') {
     const tiles = hookLine(s, u.pos, d);
     return { type, dir: d, from: [...u.pos], tiles, target: tiles[tiles.length - 1] || null };
+  }
+  if (type === 'DASH') {
+    const { tiles, hit } = dashPath(s, u.pos, d);
+    const all = hit ? [...tiles, hit.pos] : tiles;
+    return { type, dir: d, from: [...u.pos], tiles: all, target: all[all.length - 1] || add(u.pos, DIRS[d]) };
   }
   const tile = add(u.pos, DIRS[d]);
   return { type, dir: d, from: [...u.pos], tiles: [tile], target: tile };

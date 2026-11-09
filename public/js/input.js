@@ -1,7 +1,7 @@
 import { legalMoves, legalDirs, add, eq, DIRS, DIR_NAMES, actionPreview, previewOutcome, summarize, other } from '/shared/rules.js';
 
 const NAME = { p1: 'Azul', p2: 'Vermelho' };
-const ACT = { PUSH: 'Empurrão', HOOK: 'Gancho', ROCK: 'Pedra', WAIT: 'Esperar' };
+const ACT = { PUSH: 'Empurrão', HOOK: 'Gancho', DASH: 'Investida', WAIT: 'Esperar' };
 
 function describe(out) {
   const s = summarize(out.events);
@@ -29,11 +29,11 @@ const HINTS = {
   move: 'Toque numa casa marcada para andar, ou na sua unidade para ficar. Depois escolha um golpe.',
   PUSH: 'Empurrão: 1 de dano e empurra 1 casa. Toque na casa ao lado para escolher a direção.',
   HOOK: 'Gancho: sem dano; puxa o primeiro alvo da linha (até 3 casas) até 2 casas para perto. Toque na direção.',
-  ROCK: 'Pedra: bloqueia uma casa vazia ao lado. Toque na casa.',
+  DASH: 'Investida: avança até 2 casas; se esbarrar num rival, causa 1 de dano e o empurra. Pedras barram, mas buraco não: quem passa por um buraco cai!',
   WAIT: 'Esperar: você só se move. Toque em Confirmar.',
 };
 const DIR_KEYS = { ArrowUp: 'UP', ArrowDown: 'DOWN', ArrowLeft: 'LEFT', ArrowRight: 'RIGHT', w: 'UP', s: 'DOWN', a: 'LEFT', d: 'RIGHT' };
-const ACT_KEYS = { 1: 'PUSH', 2: 'HOOK', 3: 'ROCK', 4: 'WAIT' };
+const ACT_KEYS = { 1: 'PUSH', 2: 'HOOK', 3: 'DASH', 4: 'WAIT' };
 
 export class Input {
   constructor(board, els, onSubmit, onChange) {

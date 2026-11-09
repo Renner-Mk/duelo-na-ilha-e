@@ -59,7 +59,7 @@ T('gancho puxa por cima de buraco e derruba', () => {
   assert.equal(r.state.winner, 'p2');
 });
 
-T('reator resolve primeiro: mata o atacante antes do golpe agendado', () => {
+T('empate de golpes: o atacante bate primeiro e o golpe do reator pode falhar', () => {
   const s = fresh();
   s.units.p1.hp = 1;
   s.units.p2.hp = 1;
@@ -68,17 +68,17 @@ T('reator resolve primeiro: mata o atacante antes do golpe agendado', () => {
   s.rocks = [];
   let r = declare(s, 'p1', { movement: null, action: { type: 'PUSH', direction: 'DOWN' } });
   r = react(r.state, 'p2', { movement: null, action: { type: 'PUSH', direction: 'UP' } });
-  assert.equal(r.state.winner, 'p2'); // reator resolve primeiro e mata p1 antes do soco agendado
+  assert.equal(r.state.winner, 'p1'); // atacante resolve primeiro e derruba p2 antes do soco do reator
 });
 
-T('pedra bloqueia e ação inválida é rejeitada', () => {
+T('ação inválida é rejeitada (inclui investida para fora da grade)', () => {
   const s = fresh();
   s.units.p1.pos = [2, 4];
   s.units.p2.pos = [2, 0];
   assert.ok(validatePlay(s, 'p2', { action: { type: 'WAIT' } })); // não é a vez
   assert.ok(validatePlay(s, 'p1', { movement: { to: [0, 0] }, action: { type: 'WAIT' } })); // longe
-  assert.ok(validatePlay(s, 'p1', { action: { type: 'ROCK', direction: 'DOWN' } })); // fora da grade
-  assert.equal(validatePlay(s, 'p1', { action: { type: 'ROCK', direction: 'UP' } }), null);
+  assert.ok(validatePlay(s, 'p1', { action: { type: 'DASH', direction: 'DOWN' } })); // fora da grade
+  assert.equal(validatePlay(s, 'p1', { action: { type: 'DASH', direction: 'UP' } }), null);
 });
 
 T('iniciativa: gancho resolve antes do empurrão, nos dois sentidos', () => {
@@ -90,10 +90,10 @@ T('iniciativa: gancho resolve antes do empurrão, nos dois sentidos', () => {
     r = react(r.state, 'p2', { action: { type: rType, direction: rDir } });
     return r.events.filter((e) => e.t === 'resolve').map((e) => e.by);
   };
-  assert.deepEqual(order('PUSH', 'HOOK'), ['p2', 'p1']); // gancho do reator primeiro
+  assert.deepEqual(order('PUSH', 'HOOK'), ['p2', 'p1']); // gancho do reator primeiro (prioridade)
   assert.deepEqual(order('HOOK', 'PUSH'), ['p1', 'p2']); // gancho do atacante primeiro
-  assert.deepEqual(order('PUSH', 'PUSH'), ['p2', 'p1']); // empate: reator primeiro
-  assert.deepEqual(order('PUSH', 'ROCK', 'LEFT'), ['p2', 'p1']); // pedra antes do empurrão
+  assert.deepEqual(order('PUSH', 'PUSH'), ['p1', 'p2']); // empate: atacante primeiro
+  assert.deepEqual(order('PUSH', 'DASH', 'LEFT'), ['p2', 'p1']); // investida antes do empurrão
 });
 
 T('papéis se invertem', () => {
@@ -168,6 +168,51 @@ T('todos os mapas: espelhados e inícios livres', () => {
     assert.equal(new Set(all.map((p) => p.join(','))).size, all.length, `${s.mapName}: casas repetidas`);
     assert.ok(s.holes.length + s.cracks.length <= MAX_HOLES, `${s.mapName}: buracos + rachaduras passam de ${MAX_HOLES}`);
   });
+});
+
+T('investida avança 2 casas', () => {
+  const s = fresh();
+  s.units.p1.pos = [2, 4];
+  s.units.p2.pos = [0, 1];
+  let r = declare(s, 'p1', { action: { type: 'DASH', direction: 'UP' } });
+  r = react(r.state, 'p2', { action: { type: 'WAIT' } });
+  assert.deepEqual(r.state.units.p1.pos, [2, 2]);
+});
+
+T('investida: pedra barra, mas buraco derruba quem passa', () => {
+  const a = fresh();
+  a.units.p1.pos = [2, 4];
+  a.units.p2.pos = [0, 1];
+  a.rocks = [{ pos: [2, 3], hp: 2, kind: 'mtn' }];
+  let r = declare(a, 'p1', { action: { type: 'DASH', direction: 'UP' } });
+  r = react(r.state, 'p2', { action: { type: 'WAIT' } });
+  assert.deepEqual(r.state.units.p1.pos, [2, 4]); // pedra logo à frente: não sai do lugar
+  const b = fresh();
+  b.units.p1.pos = [2, 4];
+  b.units.p2.pos = [0, 1];
+  b.holes = [[2, 2]];
+  r = declare(b, 'p1', { action: { type: 'DASH', direction: 'UP' } });
+  r = react(r.state, 'p2', { action: { type: 'WAIT' } });
+  assert.equal(r.state.units.p1.alive, false); // atravessar o buraco = cair
+  assert.equal(r.state.winner, 'p2');
+  const c = fresh();
+  c.units.p1.pos = [2, 4];
+  c.units.p2.pos = [0, 1];
+  c.holes = [[2, 3]];
+  r = declare(c, 'p1', { action: { type: 'DASH', direction: 'UP' } });
+  r = react(r.state, 'p2', { action: { type: 'WAIT' } });
+  assert.equal(r.state.winner, 'p2'); // buraco colado também derruba
+});
+
+T('investida que esbarra num rival causa 1 de dano e o empurra', () => {
+  const s = fresh();
+  s.units.p1.pos = [2, 4];
+  s.units.p2.pos = [2, 2];
+  let r = declare(s, 'p1', { action: { type: 'DASH', direction: 'UP' } });
+  r = react(r.state, 'p2', { action: { type: 'WAIT' } });
+  assert.deepEqual(r.state.units.p1.pos, [2, 3]);
+  assert.deepEqual(r.state.units.p2.pos, [2, 1]);
+  assert.equal(r.state.units.p2.hp, MAX_HP - 1);
 });
 
 console.log('\nTodos os cenários passaram.');
