@@ -32,6 +32,9 @@ function newCode() {
 }
 
 const token = () => crypto.randomBytes(12).toString('hex');
+// Qualquer cliente pode mandar lixo: payload que não é objeto vira {} e ack que não é função vira função vazia.
+const obj = (v) => (v && typeof v === 'object' ? v : {});
+const fn = (f) => (typeof f === 'function' ? f : () => {});
 const seatsOf = (mode) => (mode === 'coop' ? ['h1', 'h2'] : ['p1', 'p2']);
 
 function startMatch(room) {
@@ -64,8 +67,10 @@ io.on('connection', (socket) => {
     current = { code: room.code, pid };
   };
 
-  socket.on('room:create', (opts = {}, ack) => {
-    const mode = opts && opts.mode === 'coop' ? 'coop' : 'duel';
+  socket.on('room:create', (optsIn, ackIn) => {
+    const opts = obj(optsIn);
+    const ack = fn(ackIn);
+    const mode = opts.mode === 'coop' ? 'coop' : 'duel';
     const code = newCode();
     const seats = seatsOf(mode);
     const room = { code, mode, seats, players: {}, state: null, matchId: null, plans: {}, firstAttacker: 'p2', rematch: null };
@@ -75,8 +80,9 @@ io.on('connection', (socket) => {
     ack?.({ ok: true, code, mode, playerId: seats[0], token: room.players[seats[0]].token });
   });
 
-  socket.on('room:join', ({ code } = {}, ack) => {
-    code = String(code || '').toUpperCase().trim();
+  socket.on('room:join', (msgIn, ackIn) => {
+    const ack = fn(ackIn);
+    const code = String(obj(msgIn).code || '').toUpperCase().trim();
     const room = rooms.get(code);
     if (!room) return ack?.({ ok: false, error: 'Sala não encontrada' });
     const seat = room.seats.find((s) => !room.players[s]);
@@ -88,7 +94,9 @@ io.on('connection', (socket) => {
   });
 
   // Volta à mesma vaga depois de queda de conexão ou de recarregar a página.
-  socket.on('room:rejoin', ({ code, token: tk } = {}, ack) => {
+  socket.on('room:rejoin', (msgIn, ackIn) => {
+    const { code, token: tk } = obj(msgIn);
+    const ack = fn(ackIn);
     const room = rooms.get(String(code || '').toUpperCase());
     const seat = room && room.seats.find((s) => room.players[s] && room.players[s].token === tk);
     if (!room || !seat) return ack?.({ ok: false, error: 'Sala não existe mais' });
@@ -105,7 +113,9 @@ io.on('connection', (socket) => {
   });
 
   // ----- duelo -----
-  socket.on('turn:submit', (msg = {}, ack) => {
+  socket.on('turn:submit', (msgIn, ackIn) => {
+    const msg = obj(msgIn);
+    const ack = fn(ackIn);
     const room = current && rooms.get(current.code);
     if (!room || room.mode !== 'duel' || !room.state) return ack?.({ ok: false, error: 'Sem partida' });
     const pid = current.pid; // nunca confiar no playerId do cliente
@@ -126,7 +136,9 @@ io.on('connection', (socket) => {
   });
 
   // ----- coop: planos simultâneos -----
-  socket.on('plan:submit', (msg = {}, ack) => {
+  socket.on('plan:submit', (msgIn, ackIn) => {
+    const msg = obj(msgIn);
+    const ack = fn(ackIn);
     const room = current && rooms.get(current.code);
     if (!room || room.mode !== 'coop' || !room.state) return ack?.({ ok: false, error: 'Sem partida' });
     const pid = current.pid;
@@ -154,7 +166,9 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('upgrade:pick', (msg = {}, ack) => {
+  socket.on('upgrade:pick', (msgIn, ackIn) => {
+    const msg = obj(msgIn);
+    const ack = fn(ackIn);
     const room = current && rooms.get(current.code);
     if (!room || room.mode !== 'coop' || !room.state) return ack?.({ ok: false, error: 'Sem partida' });
     if (msg.matchId !== room.matchId) return ack?.({ ok: false, error: 'Partida antiga' });
@@ -194,6 +208,10 @@ io.on('connection', (socket) => {
     p.timer = setTimeout(() => closeRoom(room), GRACE_MS);
   });
 });
+
+// rede de segurança: um erro inesperado é registrado, mas não derruba as outras salas
+process.on('uncaughtException', (e) => console.error('Erro não tratado:', e));
+process.on('unhandledRejection', (e) => console.error('Promessa rejeitada:', e));
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Duelo 5x5 em http://localhost:${PORT}`));

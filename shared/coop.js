@@ -171,7 +171,12 @@ function setupStage(s, stage, ev) {
   for (const id of HUMAN_IDS) {
     const prev = s.units[id];
     const h = prev ? { ...prev, mods: { ...prev.mods }, ups: { ...prev.ups } } : newHuman(id, id === 'h1' ? 'fox' : 'cat');
-    if (!h.alive) { h.alive = true; h.hp = 1; ev.push({ t: 'revive', id }); } // quem caiu volta com 1 de vida
+    if (!h.alive) { // quem caiu volta com 1 de vida (mais, se escolheu cura ou coração extra enquanto estava caído)
+      h.alive = true;
+      h.hp = Math.min(h.maxHp, h.reviveHp || 1);
+      delete h.reviveHp;
+      ev.push({ t: 'revive', id });
+    }
     else h.hp = Math.min(h.maxHp, h.hp + HEAL_PER_STAGE);
     h.pos = [...HUMAN_SPAWN[id]];
     h.mods.shield = h.mods.shieldMax || 0; // escudos voltam a cada fase
@@ -228,8 +233,9 @@ function applyUpgrade(u, up) {
   u.ups = u.ups || {};
   u.mods = u.mods || {};
   u.ups[up.id] = (u.ups[up.id] || 0) + 1;
-  if (up.id === 'vida') { u.maxHp += 1; u.hp += 1; }
-  if (up.id === 'cura') u.hp = u.maxHp;
+  // quem caiu escolhe como os outros: a cura vale na hora de voltar (reviveHp), em vez de ser aplicada a uma unidade morta
+  if (up.id === 'vida') { u.maxHp += 1; if (u.alive) u.hp += 1; else u.reviveHp = (u.reviveHp || 1) + 1; }
+  if (up.id === 'cura') { if (u.alive) u.hp = u.maxHp; else u.reviveHp = u.maxHp; }
   for (const [k, v] of Object.entries(up.mods || {})) u.mods[k] = (u.mods[k] || 0) + v;
 }
 

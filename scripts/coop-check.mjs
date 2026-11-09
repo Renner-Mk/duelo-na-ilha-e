@@ -181,6 +181,23 @@ T('quem caiu volta na fase seguinte com 1 de vida; escudos voltam', () => {
   assert.equal(s.units.h1.mods.shield, 1);
 });
 
+T('quem caiu e escolhe cura ou coração extra volta com a vida que escolheu', () => {
+  const run = (offers, expectHp) => {
+    let s = arena();
+    s.units.h2.alive = false; s.units.h2.hp = 0;
+    bot(s, 'e1', 'brute', [2, 4], 1);
+    s.pending = [{ pid: 'e1', type: 'WAIT', dir: null }];
+    s = resolveRound(s, { h1: { movement: null, action: { type: 'PUSH', direction: 'UP' } } }).state;
+    s.offers.h2 = offers;
+    s = pickUpgrade(s, 'h2', offers[0]).state;
+    s = pickUpgrade(s, 'h1', s.offers.h1[0]).state;
+    assert.equal(s.units.h2.alive, true);
+    assert.equal(s.units.h2.hp, expectHp);
+  };
+  run(['cura'], 3); // maçã: volta com a vida cheia
+  run(['vida'], 2); // coração extra: volta com 2 (1 + o bônus)
+});
+
 T('derrota: os dois humanos caídos na mesma fase', () => {
   const s = arena();
   s.units.h1.pos = [0, 5]; s.units.h2.pos = [0, 4];

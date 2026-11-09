@@ -129,7 +129,7 @@ class Game {
   }
 
   partnerBack() {
-    if (this.state && this.state.phase !== 'OVER') this.refresh();
+    if (this.state && this.state.phase !== 'OVER' && !this.busy) this.refresh();
   }
 
   start(state, matchId) {
@@ -212,6 +212,7 @@ class Game {
     $('#end-title').textContent = title;
     $('#end-sub').textContent = this.state.endReason === 'time' ? 'Fim do tempo: ganha quem tem mais vidas.' : fell ? 'Caiu da ilha!' : 'Sem vidas restantes.';
     $('#banner').textContent = '';
+    $('#end-again').textContent = 'Revanche';
     $('#end-again').disabled = false;
     $('#end').hidden = false;
   }
@@ -244,7 +245,7 @@ class CoopGame {
       { bar: $('#bar'), acts: [...document.querySelectorAll('.act')], moveBtn: $('#btn-move'), confirm: $('#btn-confirm'), hint: $('#hint'), preview: $('#preview'), clear: $('#btn-clear'), steps: $('#steps') },
       (p) => this.submit(p),
       () => this.draw(),
-      { preview: (s, pid, p) => this.preview(s, pid, p), describe: (o) => this.describe(o) },
+      { preview: (s, pid, p) => this.preview(s, pid, p), describe: (o) => this.describe(o), hints: (u) => this.hints(u) },
     );
   }
 
@@ -295,7 +296,7 @@ class CoopGame {
     document.querySelector('.pl.p1').classList.toggle('active', planner === 'h1');
     document.querySelector('.pl.p2').classList.toggle('active', planner === 'h2');
     const bots = Object.values(s.units).filter((u) => u.team === 'bots' && u.alive).length;
-    $('#turn').textContent = `Fase ${s.stage} · Rodada ${s.round} · ${bots} inimigo${bots === 1 ? '' : 's'}`;
+    $('#turn').textContent = `Fase ${s.stage} · ${bots} inimigo${bots === 1 ? '' : 's'}`; // curto: cabe no cabeçalho de telas estreitas
   }
 
   banner(text, alert = false) {
@@ -359,7 +360,22 @@ class CoopGame {
   }
 
   partnerBack() {
-    if (this.state) this.refresh();
+    if (!this.state || this.busy) return; // se está animando, o fim da animação já atualiza a tela
+    if (this.input.active) this.banner(this.planBanner()); // não reinicia o plano que eu estava montando
+    else this.refresh();
+  }
+
+  // Dicas dos golpes com os números reais (as melhorias mudam dano, alcance e recuo).
+  hints(u) {
+    const m = (k) => (u && u.mods && u.mods[k]) || 0;
+    const n = (x, one, many) => `${x} ${x === 1 ? one : many}`;
+    return {
+      move: 'Toque numa casa marcada para andar, ou na sua unidade para ficar. Depois escolha um golpe.',
+      PUSH: `Empurrão: ${n(1 + m('pushDmg'), 'de dano', 'de dano')} e empurra ${n(1 + m('pushKnock'), 'casa', 'casas')}. Toque na casa ao lado para escolher a direção.`,
+      HOOK: `Gancho: sem dano; puxa o primeiro alvo da linha (até ${3 + m('hookRange')} casas) até ${2 + m('hookPull')} casas para perto. Toque na direção.`,
+      DASH: `Investida: avança até ${2 + m('dashRange')} casas; se esbarrar num rival, causa ${1 + m('dashDmg')} de dano e o empurra. Buraco não barra: quem passa por ele cai!`,
+      WAIT: 'Esperar: você só se move. Toque em Confirmar.',
+    };
   }
 
   start(state, matchId) {
@@ -494,6 +510,7 @@ class CoopGame {
     $('#end-sub').textContent = `Vocês chegaram até a fase ${s.result ? s.result.stage : s.stage}.`;
     this.banner('');
     this.showUps(null);
+    $('#end-again').textContent = this.mode === 'local' ? 'Jogar de novo' : 'Revanche';
     $('#end-again').disabled = false;
     $('#end').hidden = false;
   }
@@ -582,6 +599,7 @@ function rejoin() {
     resuming = false;
     if (r && r.ok) { session.pid = r.playerId; return; }
     clearSession();
+    if (!game) menuMsg('A sala anterior não existe mais.');
     if (game && game.input) {
       game.input.end();
       $('#end-title').textContent = 'Sala encerrada';
@@ -673,7 +691,7 @@ $('#btn-join').onclick = () => {
 $('#end-again').onclick = () => {
   if (game instanceof CoopGame && game.mode === 'local') { $('#end').hidden = true; startCoopLocal(); }
   else if (game.mode === 'local') { $('#end').hidden = true; startLocal(); }
-  else { socket.emit('match:rematch'); $('#end-sub').textContent = 'Aguardando o rival aceitar…'; }
+  else { socket.emit('match:rematch'); $('#end-sub').textContent = game instanceof CoopGame ? 'Aguardando o parceiro aceitar…' : 'Aguardando o rival aceitar…'; }
 };
 $('#end-menu').onclick = () => {
   $('#end').hidden = true;

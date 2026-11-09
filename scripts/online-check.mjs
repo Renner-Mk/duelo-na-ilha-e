@@ -122,6 +122,26 @@ try {
     assert.equal((await em(z, 'room:join', { code: c2.code })).ok, false); // sala sem partida fecha na hora
   });
 
+  await T('payloads inválidos (null, texto, ack ausente) não derrubam o servidor', async () => {
+    const a = conn(), b = conn();
+    const starts = once(a, 'match:start');
+    const c = await em(a, 'room:create', { mode: 'coop' });
+    await em(b, 'room:join', { code: c.code });
+    const { matchId } = await starts;
+    const z = conn(); // eventos de sala vão por outra conexão (room:create trocaria a sala de quem o envia)
+    for (const ev of ['room:create', 'room:join', 'room:rejoin']) {
+      z.emit(ev, null); z.emit(ev, 'lixo'); z.emit(ev, 42, 'não é função'); z.emit(ev, { code: {}, token: [] });
+    }
+    for (const ev of ['turn:submit', 'plan:submit', 'upgrade:pick', 'match:rematch']) {
+      a.emit(ev, null); a.emit(ev, 'lixo'); a.emit(ev, 42, 'não é função'); a.emit(ev, { matchId, action: null, movement: 7 });
+    }
+    await wait(300);
+    const x = conn(); // o servidor continua de pé e atendendo
+    assert.equal((await em(x, 'room:join', { code: 'ZZZZ' })).ok, false);
+    const ok = await em(a, 'plan:submit', { matchId, stage: 1, round: 1, movement: null, action: { type: 'WAIT', direction: null } });
+    assert.equal(ok.ok, true);
+  });
+
   console.log('\nTodos os cenários online passaram.');
 } finally {
   sockets.forEach((s) => s.disconnect());

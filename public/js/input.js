@@ -182,7 +182,8 @@ export class Input {
     els.acts.forEach((b) => b.classList.toggle('on', this.active && b.dataset.act === this.act));
     els.moveBtn.classList.toggle('on', this.active && this.mode === 'move');
     els.confirm.disabled = !this.ready();
-    els.hint.textContent = this.active ? HINTS[this.act || 'move'] : '';
+    const hints = this.opts.hints ? this.opts.hints(this.state && this.state.units[this.pid]) : HINTS;
+    els.hint.textContent = this.active ? hints[this.act || 'move'] || '' : '';
     if (els.clear) els.clear.disabled = !this.active || (!this.move && !this.act);
     if (els.steps) {
       // 1 Mover (opcional) · 2 Golpe · 3 Direção · 4 Confirmar

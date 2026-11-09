@@ -578,3 +578,14 @@ html{overflow-x:hidden}
 .order.coop .chips{gap:4px}
 .order.coop .chip{padding:3px 7px;font-size:.78rem;gap:3px}
 .order.coop .why{font-size:.72rem}
+
+/* ===== ajustes da revisão: telas baixas, overlays com rolagem e alvos de toque ===== */
+.overlay{overflow-y:auto;align-items:safe center}
+.card{max-height:calc(100dvh - 24px);overflow-y:auto}
+.overlay .btn{min-height:44px}
+.icon{width:44px;height:44px}
+@media (max-height:480px){.ucards{grid-template-columns:repeat(3,1fr)}.ucard{flex-direction:column;text-align:center;gap:4px}.big-text{font-size:1.3rem}}
+@media (max-height:600px){#ups{display:none}.hint{min-height:1.9em;font-size:.78rem}.steps li{font-size:.66rem}}
+
+/* telas baixas: mais espaço para o tabuleiro (a barra de passos some; as dicas continuam) */
+@media (max-height:600px){.steps{display:none}.tile{margin:calc(var(--s) / var(--n,5) * .06)}.turn{font-size:.78rem;text-align:center}}
