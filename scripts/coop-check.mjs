@@ -78,7 +78,8 @@ T('escala por fase: mais inimigos, mais vida e novos tipos', () => {
   assert.equal(stageSpec(10).boss, true);
   assert.equal(stageSpec(6).boss, false);
   assert.equal(stageSpec(1).count, 2);
-  assert.equal(stageSpec(20).count, MAX_ENEMIES);
+  assert.ok(stageSpec(40).count <= MAX_ENEMIES && stageSpec(40).count > stageSpec(8).count);
+  assert.equal(stageSpec(8).count, 6);
 });
 
 T('determinismo: mesma semente e mesmos planos dão o mesmo resultado', () => {

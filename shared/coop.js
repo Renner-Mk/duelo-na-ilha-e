@@ -12,7 +12,7 @@ import { planBots } from './bots.js';
 
 export const COOP_SIZE = 7;
 export const HUMAN_IDS = ['h1', 'h2'];
-export const MAX_ENEMIES = 6;
+export const MAX_ENEMIES = 10;
 export const HEAL_PER_STAGE = 1;
 export const HUMAN_MAX_HP = 3;
 const HUMAN_SPAWN = { h1: [2, 6], h2: [4, 6] };
@@ -56,7 +56,8 @@ export function stageSpec(stage) {
   if (stage >= 3) kinds.push('hooker');
   if (stage >= 4) kinds.push('dasher');
   return {
-    count: Math.min(2 + Math.floor(stage / 2), MAX_ENEMIES),
+    // 2 na fase 1, até 6 na fase 8; depois mais 1 a cada 4 fases (máximo 10)
+    count: Math.min(Math.min(2 + Math.floor(stage / 2), 6) + Math.floor(Math.max(0, stage - 8) / 4), MAX_ENEMIES),
     boss: stage % 5 === 0,
     kinds,
     hpBonus: Math.floor((stage - 1) / 3),
@@ -65,12 +66,12 @@ export function stageSpec(stage) {
 }
 
 function enemyMods(kind, tier) {
-  const t = Math.min(tier, 2);
+  const t = Math.min(tier, 4);
   if (!t) return {};
   if (kind === 'brute') return { pushDmg: t };
   if (kind === 'hooker') return { hookRange: t };
-  if (kind === 'dasher') return { dashRange: Math.min(t, 1), dashDmg: Math.min(t, 1) };
-  return { pushDmg: t, pushKnock: Math.min(t, 1) }; // chefão
+  if (kind === 'dasher') return { dashRange: Math.min(t, 2), dashDmg: Math.min(t, 2), pushDmg: Math.floor(t / 2) };
+  return { pushDmg: t, pushKnock: Math.min(t, 1), dashRange: Math.min(t, 2), hookRange: Math.min(t, 2) }; // chefão
 }
 
 function shuffle(list, r) {
