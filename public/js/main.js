@@ -505,6 +505,7 @@ class CoopGame {
 
   finish() {
     const s = this.state;
+    $('#splash').classList.remove('on'); // a abertura da fase não fica por cima da tela de derrota
     sfx.draw();
     $('#end-title').textContent = 'Derrota!';
     $('#end-sub').textContent = `Vocês chegaram até a fase ${s.result ? s.result.stage : s.stage}.`;
@@ -636,6 +637,7 @@ function ensureSocket() {
     clearSession();
     if (!game || !game.input) { menuMsg('O outro jogador saiu antes de começar.'); return; }
     game.input.end();
+    $('#banner').textContent = '';
     $('#end-title').textContent = 'Jogador saiu';
     $('#end-sub').textContent = 'A sala foi fechada.';
     $('#end-again').disabled = true;
