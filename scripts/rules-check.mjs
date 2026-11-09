@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { createMatch, declare, react, validatePlay, legalMoves, LAYOUTS, SIZE, MAX_HP, MAX_HOLES } from '../shared/rules.js';
+import { createMatch, declare, react, validatePlay, validateUnitPlay, legalMoves, LAYOUTS, SIZE, MAX_HP, MAX_HOLES } from '../shared/rules.js';
 
 function fresh() {
   const s = createMatch(1);
@@ -213,6 +213,63 @@ T('investida que esbarra num rival causa 1 de dano e o empurra', () => {
   assert.deepEqual(r.state.units.p1.pos, [2, 3]);
   assert.deepEqual(r.state.units.p2.pos, [2, 1]);
   assert.equal(r.state.units.p2.hp, MAX_HP - 1);
+});
+
+// ---------- motor generalizado: tabuleiro variável e melhorias (mods) ----------
+const duel = (setup, aPlay, rPlay = { action: { type: 'WAIT' } }) => {
+  const s = fresh();
+  setup(s);
+  let r = declare(s, 'p1', aPlay);
+  r = react(r.state, 'p2', rPlay);
+  return r.state;
+};
+const push = (dir) => ({ action: { type: 'PUSH', direction: dir } });
+
+T('tabuleiro 7x7: a borda é a casa 7, não a 5', () => {
+  const a = duel((s) => { s.size = 7; s.units.p1.pos = [4, 3]; s.units.p2.pos = [5, 3]; }, push('RIGHT'));
+  assert.deepEqual(a.units.p2.pos, [6, 3]); // ainda dentro do tabuleiro
+  assert.equal(a.units.p2.alive, true);
+  const b = duel((s) => { s.size = 7; s.units.p1.pos = [5, 3]; s.units.p2.pos = [6, 3]; }, push('RIGHT'));
+  assert.equal(b.winner, 'p1'); // empurrado para fora da coluna 6
+});
+
+T('melhoria: empurrão com +1 de dano', () => {
+  const s = duel((x) => { x.units.p1.pos = [2, 2]; x.units.p2.pos = [2, 3]; x.units.p1.mods = { pushDmg: 1 }; }, push('DOWN'));
+  assert.equal(s.units.p2.hp, MAX_HP - 2);
+});
+
+T('melhoria: empurrão joga 2 casas e casca grossa anula o recuo', () => {
+  const a = duel((x) => { x.units.p1.pos = [0, 2]; x.units.p2.pos = [1, 2]; x.units.p1.mods = { pushKnock: 1 }; }, push('RIGHT'));
+  assert.deepEqual(a.units.p2.pos, [3, 2]);
+  const b = duel((x) => { x.units.p1.pos = [0, 2]; x.units.p2.pos = [1, 2]; x.units.p2.mods = { heavy: 1 }; }, push('RIGHT'));
+  assert.deepEqual(b.units.p2.pos, [1, 2]); // não recua, mas leva o dano
+  assert.equal(b.units.p2.hp, MAX_HP - 1);
+});
+
+T('melhoria: gancho com +1 de alcance acerta quem estava fora de alcance', () => {
+  const hook = { action: { type: 'HOOK', direction: 'UP' } };
+  const setup = (mods) => (x) => { x.units.p1.pos = [2, 4]; x.units.p2.pos = [2, 0]; x.units.p1.mods = mods; };
+  assert.deepEqual(duel(setup({}), hook).units.p2.pos, [2, 0]); // alcance 3: erra
+  assert.deepEqual(duel(setup({ hookRange: 1 }), hook).units.p2.pos, [2, 2]); // alcance 4: puxa 2 casas
+});
+
+T('melhoria: investida com +1 casa e passo longo', () => {
+  const a = duel((x) => { x.units.p1.pos = [2, 4]; x.units.p2.pos = [0, 1]; x.units.p1.mods = { dashRange: 1 }; }, { action: { type: 'DASH', direction: 'UP' } });
+  assert.deepEqual(a.units.p1.pos, [2, 1]); // 3 casas
+  const s = fresh();
+  s.units.p1.mods = { moveRange: 1 };
+  const moves = legalMoves(s, 'p1').map((p) => p.join(','));
+  assert.ok(moves.includes('2,2')); // duas casas à frente
+  assert.equal(validateUnitPlay(s, 'p1', { movement: { to: [2, 2] }, action: { type: 'WAIT' } }), null);
+  s.units.p1.mods = {};
+  assert.ok(!legalMoves(s, 'p1').map((p) => p.join(',')).includes('2,2'));
+});
+
+T('melhoria: escudo anula o próximo dano e some', () => {
+  const s = duel((x) => { x.units.p1.pos = [2, 2]; x.units.p2.pos = [2, 3]; x.units.p2.mods = { shield: 1 }; }, push('DOWN'));
+  assert.equal(s.units.p2.hp, MAX_HP);
+  assert.equal(s.units.p2.mods.shield, 0);
+  assert.deepEqual(s.units.p2.pos, [2, 4]); // o empurrão ainda desloca
 });
 
 console.log('\nTodos os cenários passaram.');
