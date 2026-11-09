@@ -119,6 +119,19 @@ class Game {
     b.classList.toggle('alert', alert);
   }
 
+  sync(state, matchId) { // volta de uma queda de conexão: mostra o estado atual sem animar
+    this.start(state, matchId);
+  }
+
+  partnerAway(seconds) {
+    this.input.end();
+    this.banner(`Rival desconectado… esperando ${seconds}s para ele voltar`, true);
+  }
+
+  partnerBack() {
+    if (this.state && this.state.phase !== 'OVER') this.refresh();
+  }
+
   start(state, matchId) {
     this.state = state;
     this.matchId = matchId;
@@ -214,7 +227,10 @@ class CoopGame {
     this.mode = mode;
     this.me = me;
     this.state = null;
-    this.plans = {};
+    this.matchId = null;
+    this.plans = {}; // local: planos já feitos; online: só o do parceiro não é conhecido
+    this.planned = []; // online: quem já enviou o plano (vem do servidor)
+    this.sent = false; // online: eu já enviei o meu
     this.busy = false;
     this.board = new Board($('#board'), (p) => this.input.tap(p), COOP_SIZE);
     applyView();
@@ -318,8 +334,39 @@ class CoopGame {
     return `F${prev.stage} R${prev.round} · ${parts.length ? parts.join(' · ') : 'sem acertos'}`;
   }
 
-  start(state) {
+  // Volta de uma queda de conexão (ou de recarregar a página): mostra o estado atual sem abertura nem animação.
+  sync(state, matchId, planned) {
     this.state = state;
+    this.matchId = matchId;
+    this.planned = planned || [];
+    this.sent = this.planned.includes(this.me);
+    this.plans = {};
+    this.refresh();
+  }
+
+  setPlanned(list) {
+    this.planned = list;
+    if (this.state && this.state.phase === 'PLAN' && this.input.active) this.banner(this.planBanner());
+  }
+
+  planBanner() {
+    const partner = HUMAN_IDS.find((id) => id !== this.me);
+    return this.planned.includes(partner) ? 'Seu parceiro já planejou. Sua vez!' : 'Planeje sua jogada: ande e escolha um golpe';
+  }
+
+  partnerAway(seconds) {
+    this.banner(`Parceiro desconectado… esperando ${seconds}s para ele voltar`, true);
+  }
+
+  partnerBack() {
+    if (this.state) this.refresh();
+  }
+
+  start(state, matchId) {
+    this.state = state;
+    this.matchId = matchId || null;
+    this.planned = [];
+    this.sent = false;
     this.plans = {};
     document.querySelector('.rule').textContent = 'Ordem dos golpes: Investida → Gancho → Empurrão. Empate: os bots vão primeiro.';
     $('#log').innerHTML = '';
@@ -345,9 +392,17 @@ class CoopGame {
     $('#upgrade').hidden = true;
     if (s.phase === 'OVER') return this.finish();
     if (s.phase === 'UPGRADE') { this.input.end(); this.showUps(null); return this.showUpgrades(); }
+    if (this.mode === 'online') {
+      this.showUps(this.me);
+      if (!s.units[this.me].alive) { this.input.end(); this.banner('Você caiu! Volta na próxima fase, torça pelo parceiro'); return this.draw(); }
+      if (this.sent || this.planned.includes(this.me)) { this.input.end(); this.banner('Plano enviado. Aguardando o parceiro…'); return this.draw(); }
+      this.input.begin(s, this.me);
+      this.banner(this.planBanner());
+      return this.draw();
+    }
     const need = HUMAN_IDS.filter((id) => s.units[id].alive && !this.plans[id]);
     if (!need.length) return this.resolve();
-    const who = this.mode === 'local' ? need[0] : this.me;
+    const who = need[0];
     this.banner(`${this.nameOf(who)}: ande e escolha um golpe`, false);
     this.input.begin(s, who);
     this.showUps(who);
@@ -355,6 +410,16 @@ class CoopGame {
   }
 
   submit(play) {
+    if (this.mode === 'online') {
+      const s = this.state;
+      this.input.end();
+      this.banner('Enviando plano…');
+      socket.emit('plan:submit', { matchId: this.matchId, stage: s.stage, round: s.round, movement: play.movement, action: play.action }, (r) => {
+        if (r && r.ok) { this.sent = true; this.banner('Plano enviado. Aguardando o parceiro…'); this.draw(); }
+        else { this.banner((r && r.error) || 'Falha ao enviar', true); this.refresh(); }
+      });
+      return;
+    }
     this.plans[this.input.pid] = play;
     this.refresh();
   }
@@ -380,6 +445,8 @@ class CoopGame {
     await playEvents(this.board, prev, cut < 0 ? events : events.slice(0, cut), this.orderUi);
     if (events.some((e) => e.t === 'order')) this.addLog(this.logLine(prev, events));
     this.state = state;
+    this.planned = [];
+    this.sent = false;
     this.busy = false;
     if (cut >= 0) { this.splash(state.stage); await sleep(900); }
     this.refresh();
@@ -391,7 +458,7 @@ class CoopGame {
     const pending = HUMAN_IDS.filter((id) => !s.picks[id]);
     if (!pending.length) return;
     const uid = this.mode === 'local' ? pending[0] : this.me;
-    if (this.mode === 'online' && s.picks[uid]) { this.banner('Aguardando o parceiro escolher…'); return; }
+    if (this.mode === 'online' && s.picks[uid]) { this.banner('Melhoria escolhida. Aguardando o parceiro…'); return; }
     this.banner(`Fase ${s.stage} limpa! ${this.nameOf(uid)}, escolha sua melhoria`);
     sfx.win();
     const u = s.units[uid];
@@ -413,8 +480,11 @@ class CoopGame {
   pick(uid, id) {
     sfx.confirm();
     $('#upgrade').hidden = true;
-    if (this.mode === 'local') this.apply(pickUpgrade(this.state, uid, id));
-    // online: ver Etapa 5
+    if (this.mode === 'local') { this.apply(pickUpgrade(this.state, uid, id)); return; }
+    this.banner('Melhoria escolhida. Aguardando o parceiro…');
+    socket.emit('upgrade:pick', { matchId: this.matchId, upgrade: id }, (r) => {
+      if (!r || !r.ok) { this.banner((r && r.error) || 'Falha ao escolher', true); this.showUpgrades(); }
+    });
   }
 
   finish() {
@@ -487,20 +557,68 @@ function startLocal() {
   game.start(createMatch(Date.now() & 0xffff, 'p1'), 'local');
 }
 
+// Sessão da sala (para voltar à mesma vaga depois de uma queda de conexão ou de recarregar a página).
+let session = null; // { code, token, pid, mode }
+let resuming = false;
+function saveSession(v) {
+  session = v;
+  try { sessionStorage.setItem('duelo:sessao', JSON.stringify(v)); } catch { /* sem armazenamento */ }
+}
+function clearSession() {
+  session = null;
+  try { sessionStorage.removeItem('duelo:sessao'); } catch { /* sem armazenamento */ }
+}
+
+// Cria o controlador certo para o modo da sala (duelo ou coop) se ainda não existir.
+function makeGame(mode) {
+  if (mode === 'coop') { if (!(game instanceof CoopGame)) game = new CoopGame('online', session.pid); }
+  else if (!(game instanceof Game)) game = new Game('online', session.pid);
+  return game;
+}
+
+function rejoin() {
+  if (!session || !socket) return;
+  socket.emit('room:rejoin', { code: session.code, token: session.token }, (r) => {
+    resuming = false;
+    if (r && r.ok) { session.pid = r.playerId; return; }
+    clearSession();
+    if (game && game.input) {
+      game.input.end();
+      $('#end-title').textContent = 'Sala encerrada';
+      $('#end-sub').textContent = 'A sala não existe mais.';
+      $('#end-again').disabled = true;
+      $('#end').hidden = false;
+    }
+  });
+}
+
 function ensureSocket() {
   if (socket) return socket;
   socket = window.io();
-  socket.on('match:start', ({ matchId, state }) => {
-    show('game');
-    if (!(game instanceof Game)) game = new Game('online', game?.pendingMe || null);
-    game.start(state, matchId);
+  let connectedOnce = false;
+  socket.on('connect', () => {
+    if ((connectedOnce || resuming) && session) rejoin(); // caiu e voltou (ou página recarregada)
+    connectedOnce = true;
   });
-  socket.on('match:update', (msg) => game instanceof Game && game.apply(msg));
-  socket.on('match:rematchRequested', () => { $('#end-sub').textContent = 'O rival quer revanche!'; });
+  socket.on('match:start', ({ matchId, state, mode }) => {
+    show('game');
+    makeGame(mode).start(state, matchId);
+  });
+  socket.on('match:sync', ({ matchId, state, mode, planned }) => {
+    show('game');
+    $('#wait').hidden = true;
+    makeGame(mode).sync(state, matchId, planned);
+  });
+  socket.on('match:update', (msg) => game && game.apply && game.apply(msg));
+  socket.on('plan:status', ({ planned }) => game instanceof CoopGame && game.setPlanned(planned));
+  socket.on('partner:away', ({ seconds }) => game && game.partnerAway && game.partnerAway(seconds));
+  socket.on('partner:back', () => game && game.partnerBack && game.partnerBack());
+  socket.on('match:rematchRequested', () => { $('#end-sub').textContent = 'O outro jogador quer revanche!'; });
   socket.on('opponent:left', () => {
-    if (!(game instanceof Game)) { menuMsg('O rival saiu antes de começar.'); return; }
+    clearSession();
+    if (!game || !game.input) { menuMsg('O outro jogador saiu antes de começar.'); return; }
     game.input.end();
-    $('#end-title').textContent = 'Rival saiu';
+    $('#end-title').textContent = 'Jogador saiu';
     $('#end-sub').textContent = 'A sala foi fechada.';
     $('#end-again').disabled = true;
     $('#end').hidden = false;
@@ -513,24 +631,28 @@ function menuMsg(t) { $('#menu-msg').textContent = t; }
 $('#btn-local').onclick = () => { unlock(); startLocal(); };
 $('#btn-coop-local').onclick = () => { unlock(); startCoopLocal(); };
 
-$('#btn-create').onclick = () => {
+function createRoom(mode) {
   unlock();
-  const s = ensureSocket();
-  s.emit('room:create', null, (r) => {
-    game = { mode: 'online', pendingMe: r.playerId };
+  const sk = ensureSocket();
+  sk.emit('room:create', { mode }, (r) => {
+    saveSession({ code: r.code, token: r.token, pid: r.playerId, mode: r.mode });
+    game = null;
     $('#wait-code').textContent = r.code;
-    $('#wait-msg').textContent = 'Aguardando o rival entrar…';
+    $('#wait-msg').textContent = mode === 'coop' ? 'Aguardando o seu amigo entrar…' : 'Aguardando o rival entrar…';
     $('#wait').hidden = false;
   });
-};
+}
+$('#btn-create').onclick = () => createRoom('duel');
+$('#btn-coop-create').onclick = () => createRoom('coop');
 
 $('#wait-copy').onclick = async () => {
   const link = `${location.origin}/?sala=${$('#wait-code').textContent}`;
-  try { await navigator.clipboard.writeText(link); $('#wait-msg').textContent = 'Link copiado! Envie ao rival.'; }
+  try { await navigator.clipboard.writeText(link); $('#wait-msg').textContent = 'Link copiado! Envie ao seu amigo.'; }
   catch { $('#wait-msg').textContent = `Copie o link: ${link}`; }
 };
 $('#wait-cancel').onclick = () => {
   $('#wait').hidden = true;
+  clearSession();
   if (socket) { socket.disconnect(); socket = null; }
   game = null;
   menuMsg('');
@@ -540,10 +662,11 @@ $('#btn-join').onclick = () => {
   unlock();
   const code = $('#code').value.trim();
   if (code.length !== 4) return menuMsg('Digite o código de 4 letras.');
-  const s = ensureSocket();
-  s.emit('room:join', { code }, (r) => {
+  const sk = ensureSocket();
+  sk.emit('room:join', { code }, (r) => {
     if (!r.ok) return menuMsg(r.error);
-    game = { mode: 'online', pendingMe: r.playerId };
+    saveSession({ code: r.code, token: r.token, pid: r.playerId, mode: r.mode });
+    game = null;
   });
 };
 
@@ -555,6 +678,7 @@ $('#end-again').onclick = () => {
 $('#end-menu').onclick = () => {
   $('#end').hidden = true;
   if (game && game.input) game.input.end();
+  clearSession();
   $('#ups').hidden = true;
   $('#upgrade').hidden = true;
   if (socket) { socket.disconnect(); socket = null; }
@@ -572,3 +696,8 @@ document.addEventListener('keydown', (e) => {
 const invite = new URLSearchParams(location.search).get('sala');
 if (invite) { $('#code').value = invite.toUpperCase().slice(0, 4); menuMsg('Convite recebido: toque em Entrar.'); }
 document.addEventListener('pointerdown', unlock, { once: true });
+// Página recarregada no meio de uma partida online: volta à mesma vaga.
+try {
+  const saved = JSON.parse(sessionStorage.getItem('duelo:sessao') || 'null');
+  if (saved && saved.code && saved.token) { session = saved; resuming = true; ensureSocket(); menuMsg('Voltando para a sua sala…'); }
+} catch { /* sessão inválida */ }
