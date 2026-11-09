@@ -532,3 +532,28 @@ html{overflow-x:hidden}
 .board-wrap:not(.v3d) .pin-in.ghostrock{transform:translate(-50%,-30%)}
 .board-wrap:not(.v3d) .pin-in.xmark{transform:translate(-50%,-30%)}
 .board-wrap:not(.v3d) .pin-in.num{transform:translate(-150%,-130%)}
+
+/* ===== coop: tabuleiro N x N, vida por unidade e inimigos ===== */
+.board{grid-template:repeat(var(--n,5),1fr)/repeat(var(--n,5),1fr)}
+.unit,.rock,.ghost{width:var(--c,20%);height:var(--c,20%)}
+.deco{width:calc(var(--c,20%) * .45);height:calc(var(--c,20%) * .45)}
+.hearts-mini{font-size:calc(var(--s) / var(--n,5) * .24)}
+.hearts-mini b{font-size:.95em;margin-left:1px;color:#fff;-webkit-text-stroke:2px var(--ink);paint-order:stroke fill}
+.pin-in{font-size:clamp(.9rem,calc(var(--s) / var(--n,5) * .38),2rem)}
+.pin-in.num.bot{background:#8a5be0}
+
+/* cores dos inimigos */
+.brute{--fur:#7cc04b;--fur2:#4f8f2c;--belly:#e8f7d4;--acc:#3b2a66;--ink:#2a2350}
+.hooker{--fur:#a56be8;--fur2:#6f3fb8;--belly:#efe1ff;--acc:#ffd23f;--ink:#2a2350}
+.dasher{--fur:#ff9a3d;--fur2:#c9641a;--belly:#ffe6c4;--acc:#7a3d12;--ink:#2a2350}
+.boss{--fur:#4f4472;--fur2:#2c2444;--belly:#9a90bd;--acc:#2a2350;--ink:#1c1738}
+.fighter .horn{fill:#f5e7c0;stroke:var(--ink);stroke-width:1.8;stroke-linejoin:round}
+.fighter .tusk{stroke:var(--ink);stroke-width:1.5;stroke-linejoin:round}
+.fighter .crown{fill:#ffd23f;stroke:var(--ink);stroke-width:1.8;stroke-linejoin:round}
+.fighter .steelS{fill:none;stroke:#d7deee;stroke-width:3.2;stroke-linecap:round}
+.fighter .steelS.ink2{stroke:var(--ink);stroke-width:6}
+.fighter .speed{stroke:#fff;stroke-width:3;opacity:.8;animation:speedLines .5s linear infinite}
+@keyframes speedLines{50%{transform:translateX(-4px);opacity:.4}}
+.boss .f-eyes .white{fill:#ffe3e3}
+.boss .f-eyes .f-pupil{fill:#ff2d3d}
+.unit.kind-boss .fighter{width:150%;height:150%;margin-top:-30%}

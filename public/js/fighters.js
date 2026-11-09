@@ -1,4 +1,5 @@
-// Personagens em SVG: Azul = raposa de capacete, Vermelho = gato de faixa na cabeça.
+// Personagens em SVG: raposa de capacete (azul/h1), gato de faixa na cabeça (vermelho/h2) e os inimigos do coop:
+// Brutamontes (verde), Fisgador (roxo), Investidor (laranja) e o Chefão (escuro, coroado).
 // Cada parte tem uma classe (f-*) para as animações de CSS: respirar, piscar, cauda, orelhas, braços.
 
 const COMMON_HEAD_EXPR = `
@@ -83,8 +84,98 @@ const CAT = `
   </g>
 </svg>`;
 
-export function fighterSVG(pid) {
-  return pid === 'p1' ? FOX : CAT;
+// Olhos e boca em comum dos inimigos (as classes f-* alimentam as animações de piscar, dano e medo).
+const EYES = (y, dx = 10, r = 5.3) => `
+        <g class="f-eyes">
+          <ellipse class="white" cx="${50 - dx}" cy="${y}" rx="${r}" ry="${r + 0.5}"/><ellipse class="white" cx="${50 + dx}" cy="${y}" rx="${r}" ry="${r + 0.5}"/>
+          <circle class="ink f-pupil" cx="${50 - dx + 0.6}" cy="${y + 1}" r="${r * 0.58}"/><circle class="ink f-pupil" cx="${50 + dx - 0.6}" cy="${y + 1}" r="${r * 0.58}"/>
+          <circle class="white" cx="${50 - dx + 1.8}" cy="${y - 0.6}" r="1.1"/><circle class="white" cx="${50 + dx + 0.6}" cy="${y - 0.6}" r="1.1"/>
+        </g>
+        <g class="f-hurt"><path class="inkS" d="M${50 - dx - 5} ${y - 5} L${50 - dx + 5} ${y + 5} M${50 - dx + 5} ${y - 5} L${50 - dx - 5} ${y + 5} M${50 + dx - 5} ${y - 5} L${50 + dx + 5} ${y + 5} M${50 + dx + 5} ${y - 5} L${50 + dx - 5} ${y + 5}"/></g>
+        <g class="f-brows"><path class="inkS" d="M${50 - dx - 7} ${y - 8} L${50 - dx + 5} ${y - 4}"/><path class="inkS" d="M${50 + dx + 7} ${y - 8} L${50 + dx - 5} ${y - 4}"/></g>
+        <path class="f-sweat" d="M74 28 Q79 35 74 40 Q69 35 74 28Z"/>`;
+
+const BRUTE = (boss) => `
+<svg class="fighter ${boss ? 'boss' : 'brute'}" viewBox="0 0 100 100" aria-hidden="true">
+  <ellipse class="f-shadow" cx="50" cy="92" rx="27" ry="6"/>
+  <g class="f-all">
+    <g class="f-feet"><ellipse class="fur2" cx="35" cy="88" rx="11" ry="6"/><ellipse class="fur2" cx="65" cy="88" rx="11" ry="6"/></g>
+    <g class="f-body">
+      <ellipse class="fur" cx="50" cy="66" rx="27" ry="22"/>
+      <ellipse class="belly" cx="50" cy="71" rx="16" ry="14"/>
+      <g class="f-armL"><rect class="fur" x="17" y="52" width="14" height="24" rx="7"/><circle class="acc" cx="24" cy="78" r="9.5"/></g>
+      <g class="f-armR"><rect class="fur" x="69" y="52" width="14" height="24" rx="7"/><circle class="acc" cx="76" cy="78" r="9.5"/></g>
+      <g class="f-head">
+        <path class="horn" d="M30 36 L19 12 L41 28Z"/><path class="horn" d="M70 36 L81 12 L59 28Z"/>
+        <ellipse class="fur" cx="50" cy="42" rx="22" ry="19"/>
+        <path class="white tusk" d="M39 53 L35 65 L46 56Z"/><path class="white tusk" d="M61 53 L65 65 L54 56Z"/>
+        <path class="inkS f-mouth" d="M40 55 Q50 49 60 55"/>
+        ${EYES(41, 10, 5.2)}
+        <path class="inkS" d="M32 33 L46 38 M68 33 L54 38"/>
+        ${boss ? '<path class="acc crown" d="M32 26 L35 12 L43 21 L50 8 L57 21 L65 12 L68 26Z"/>' : ''}
+      </g>
+    </g>
+  </g>
+</svg>`;
+
+const HOOKER = `
+<svg class="fighter hooker" viewBox="0 0 100 100" aria-hidden="true">
+  <ellipse class="f-shadow" cx="50" cy="92" rx="25" ry="6"/>
+  <g class="f-all">
+    <g class="f-feet"><ellipse class="fur2" cx="39" cy="88" rx="10" ry="5.5"/><ellipse class="fur2" cx="61" cy="88" rx="10" ry="5.5"/></g>
+    <g class="f-body">
+      <ellipse class="fur" cx="50" cy="68" rx="21" ry="19"/>
+      <ellipse class="belly" cx="50" cy="72" rx="13" ry="12.5"/>
+      <g class="f-armL"><rect class="fur" x="23" y="58" width="10" height="18" rx="5"/><circle class="acc" cx="28" cy="78" r="6.8"/></g>
+      <g class="f-armR">
+        <path class="steelS ink2" d="M73 62 L90 30"/><path class="steelS" d="M73 62 L90 30"/>
+        <path class="steelS ink2" d="M90 30 q9 -7 3 -15 q-4 -5 -10 -1"/><path class="steelS" d="M90 30 q9 -7 3 -15 q-4 -5 -10 -1"/>
+        <rect class="fur" x="67" y="58" width="10" height="18" rx="5"/><circle class="acc" cx="72" cy="63" r="6.8"/>
+      </g>
+      <g class="f-head">
+        <path class="fur2" d="M50 10 L38 32 L62 32Z"/>
+        <circle class="fur" cx="50" cy="44" r="22"/>
+        <path class="inkS f-mouth" d="M36 52 Q50 67 64 52"/>
+        <path class="white tusk" d="M42 56 L44 62 L48 58Z"/><path class="white tusk" d="M58 56 L56 62 L52 58Z"/>
+        ${EYES(38, 12, 6.6)}
+      </g>
+    </g>
+  </g>
+</svg>`;
+
+const DASHER = `
+<svg class="fighter dasher" viewBox="0 0 100 100" aria-hidden="true">
+  <ellipse class="f-shadow" cx="50" cy="92" rx="25" ry="6"/>
+  <g class="f-all">
+    <path class="whisk speed" d="M2 56 H18 M0 68 H15 M4 80 H20"/>
+    <g class="f-feet"><ellipse class="fur2" cx="39" cy="88" rx="10" ry="5.5"/><ellipse class="fur2" cx="61" cy="88" rx="10" ry="5.5"/></g>
+    <g class="f-body">
+      <ellipse class="fur" cx="50" cy="69" rx="21" ry="18"/>
+      <ellipse class="belly" cx="50" cy="73" rx="12" ry="11.5"/>
+      <g class="f-armL"><rect class="fur" x="24" y="58" width="9" height="17" rx="4.5"/><circle class="acc" cx="28.5" cy="77" r="6"/></g>
+      <g class="f-armR"><rect class="fur" x="67" y="58" width="9" height="17" rx="4.5"/><circle class="acc" cx="71.5" cy="77" r="6"/></g>
+      <g class="f-head">
+        <circle class="fur" cx="29" cy="34" r="7.5"/><circle class="fur" cx="71" cy="34" r="7.5"/>
+        <path class="horn" d="M50 4 L42 28 L58 28Z"/>
+        <ellipse class="fur" cx="50" cy="45" rx="23" ry="19"/>
+        <ellipse class="belly" cx="50" cy="54" rx="11" ry="7.5"/>
+        <ellipse class="ink" cx="46" cy="54" rx="1.6" ry="2"/><ellipse class="ink" cx="54" cy="54" rx="1.6" ry="2"/>
+        <path class="inkS f-mouth" d="M43 60 Q50 63 57 60"/>
+        ${EYES(42, 10, 4.9)}
+        <path class="inkS" d="M32 34 L46 40 M68 34 L54 40"/>
+      </g>
+    </g>
+  </g>
+</svg>`;
+
+const SPRITES = {
+  fox: FOX, cat: CAT, brute: BRUTE(false), boss: BRUTE(true), hooker: HOOKER, dasher: DASHER,
+};
+const ALIAS = { p1: 'fox', h1: 'fox', p2: 'cat', h2: 'cat' };
+
+// Aceita um tipo ('fox', 'brute'...) ou um id de jogador ('p1', 'h2'...).
+export function fighterSVG(kind) {
+  return SPRITES[ALIAS[kind] || kind] || FOX;
 }
 
 // Luva de boxe usada no golpe que "voa" até o alvo.

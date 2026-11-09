@@ -3,7 +3,15 @@ import { fighterSVG, GLOVE_SVG } from './fighters.js';
 
 const GLYPH = { PUSH: '🥊', HOOK: '🪝', DASH: '💨' };
 const NS = 'http://www.w3.org/2000/svg';
-const pct = (n) => `${n * 20}%`;
+// Vida de uma unidade: corações (até 6) ou "❤️ N" quando a vida é grande (chefes e fases altas).
+function hpHtml(u) {
+  const max = u.maxHp || 3;
+  if (max <= 6) return Array.from({ length: max }, (_, i) => `<span class="${i < u.hp ? '' : 'lost'}">❤️</span>`).join('');
+  return `<span>❤️</span><b>${u.hp}</b>`;
+}
+// Lado de um id de unidade: 'p1'/'h1' azul, 'p2'/'h2' vermelho, o resto são bots.
+const sideOf = (id) => (id === 'p1' || id === 'h1' ? 'p1' : id === 'p2' || id === 'h2' ? 'p2' : 'bot');
+const SIDE_COLOR = { p1: '#3d8bff', p2: '#ff5a6e', bot: '#8a5be0' };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export { sleep };
 
@@ -14,18 +22,22 @@ function svgEl(tag, attrs = {}) {
 }
 
 export class Board {
-  constructor(wrap, onTile) {
+  constructor(wrap, onTile, size = SIZE) {
     this.wrap = wrap;
     this.onTile = onTile;
+    this.size = size; // lado do tabuleiro (5 no duelo, 7 no coop)
+    this.step = 100 / size; // tamanho de uma casa, em %
     wrap.innerHTML = '';
     this.gshadow = document.createElement('div');
     this.gshadow.className = 'gshadow';
     wrap.appendChild(this.gshadow);
     this.grid = document.createElement('div');
     this.grid.className = 'board';
+    this.grid.style.setProperty('--n', size);
+    this.grid.style.setProperty('--c', `${this.step}%`);
     this.tiles = [];
-    for (let y = 0; y < SIZE; y++) {
-      for (let x = 0; x < SIZE; x++) {
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
         const b = document.createElement('button');
         b.className = 'tile' + ((x + y) % 2 ? ' dark' : '');
         b.setAttribute('aria-label', `Casa ${String.fromCharCode(65 + x)}${y + 1}`);
@@ -39,22 +51,15 @@ export class Board {
     this.layer.className = 'layer';
     this.rockLayer = document.createElement('div');
     this.rockLayer.className = 'layer';
-    this.units = {};
+    this.units = {}; // id -> elemento; criado conforme as unidades aparecem no estado
     this.rockEls = new Map();
-    for (const id of ['p1', 'p2']) {
-      const u = document.createElement('div');
-      u.className = `unit ${id}`;
-      u.innerHTML = `<div class="stand"><div class="hearts-mini"></div>${fighterSVG(id)}</div>`;
-      this.layer.appendChild(u);
-      this.units[id] = u;
-    }
     this.decorLayer = document.createElement('div');
     this.decorLayer.className = 'layer decor';
     this.fxLayer = document.createElement('div');
     this.fxLayer.className = 'layer fxl';
     this.pinLayer = document.createElement('div');
     this.pinLayer.className = 'layer pins';
-    this.svg = svgEl('svg', { class: 'fx', viewBox: `0 0 ${SIZE} ${SIZE}` });
+    this.svg = svgEl('svg', { class: 'fx', viewBox: `0 0 ${size} ${size}` });
     // laje da ilha: faces da frente e da direita (aparecem na visão 3D)
     this.slab = document.createElement('div');
     this.slab.className = 'slab';
@@ -63,7 +68,24 @@ export class Board {
     wrap.appendChild(this.grid);
   }
 
-  tile(p) { return this.tiles[p[1] * SIZE + p[0]]; }
+  pct(n) { return `${n * this.step}%`; }
+
+  tile(p) { return this.tiles[p[1] * this.size + p[0]]; }
+
+  // Cria (ou recria, se o tipo mudou) o elemento de uma unidade.
+  unitEl(id, u) {
+    const kind = u.kind || id;
+    let el = this.units[id];
+    if (el && el.dataset.kind === kind) return el;
+    if (el) el.remove();
+    el = document.createElement('div');
+    el.className = `unit ${id} kind-${kind} team-${u.team || id}`;
+    el.dataset.kind = kind;
+    el.innerHTML = `<div class="stand"><div class="hearts-mini"></div>${fighterSVG(kind)}</div>`;
+    this.layer.appendChild(el);
+    this.units[id] = el;
+    return el;
+  }
 
   // model: { units, rocks, holes }; view: { moveTiles, aimTiles, selMove, ghost, telegraph, preview, scared, angry }
   draw(model, view = {}) {
@@ -72,7 +94,7 @@ export class Board {
     const aim = new Set((view.aimTiles || []).map(key));
     const sel = view.selMove ? key(view.selMove) : null;
     this.tiles.forEach((t, i) => {
-      const p = [i % SIZE, Math.floor(i / SIZE)];
+      const p = [i % this.size, Math.floor(i / this.size)];
       const k = key(p);
       t.classList.toggle('hole', model.holes.some((h) => h[0] === p[0] && h[1] === p[1]));
       t.classList.toggle('crack', (model.cracks || []).some((h) => h[0] === p[0] && h[1] === p[1]));
@@ -94,8 +116,8 @@ export class Board {
         d = document.createElement('div');
         d.className = 'rock new';
         d.innerHTML = '<i class="stand"></i>';
-        d.style.left = pct(r.pos[0]);
-        d.style.top = pct(r.pos[1]);
+        d.style.left = this.pct(r.pos[0]);
+        d.style.top = this.pct(r.pos[1]);
         setTimeout(() => d.classList.remove('new'), 450);
         this.rockLayer.appendChild(d);
         this.rockEls.set(k, d);
@@ -107,16 +129,19 @@ export class Board {
       if (!seenRocks.has(k)) { d.remove(); this.rockEls.delete(k); }
     }
 
-    for (const id of ['p1', 'p2']) {
-      const u = model.units[id];
-      const el = this.units[id];
-      el.style.left = pct(u.pos[0]);
-      el.style.top = pct(u.pos[1]);
+    const seenUnits = new Set();
+    for (const [id, u] of Object.entries(model.units)) {
+      seenUnits.add(id);
+      const el = this.unitEl(id, u);
+      el.style.left = this.pct(u.pos[0]);
+      el.style.top = this.pct(u.pos[1]);
       el.classList.toggle('down', !u.alive);
       el.classList.toggle('scared', view.scared === id && u.alive);
       el.classList.toggle('angry', view.angry === id && u.alive);
-      el.querySelector('.hearts-mini').innerHTML = Array.from({ length: 3 }, (_, i) =>
-        `<span class="${i < u.hp ? '' : 'lost'}">❤️</span>`).join('');
+      el.querySelector('.hearts-mini').innerHTML = hpHtml(u);
+    }
+    for (const id of Object.keys(this.units)) {
+      if (!seenUnits.has(id)) { this.units[id].remove(); delete this.units[id]; }
     }
 
     this.layer.querySelectorAll('.ghost').forEach((g) => g.remove());
@@ -124,8 +149,8 @@ export class Board {
       const g = document.createElement('div');
       g.className = `ghost ${view.ghost.pid}`;
       g.style.setProperty('--col', view.ghost.pid === 'p1' ? 'var(--blue)' : 'var(--red)');
-      g.style.left = pct(view.ghost.pos[0]);
-      g.style.top = pct(view.ghost.pos[1]);
+      g.style.left = this.pct(view.ghost.pos[0]);
+      g.style.top = this.pct(view.ghost.pos[1]);
       g.innerHTML = `<div class="stand">${fighterSVG(view.ghost.pid)}</div>`;
       this.layer.appendChild(g);
     }
@@ -140,23 +165,24 @@ export class Board {
 
   // Prévia do resultado: onde cada boneco vai parar, dano e quedas.
   drawOutcome({ final, base, rocksBefore }) {
-    const clamp = (n) => Math.min(SIZE - 1, Math.max(0, n));
+    const clamp = (n) => Math.min(this.size - 1, Math.max(0, n));
     const same = (a, b) => a[0] === b[0] && a[1] === b[1];
-    for (const id of ['p1', 'p2']) {
+    for (const id of Object.keys(base)) {
       const b = base[id];
       const f = final.units[id];
+      if (!b || !f) continue;
       const lostHp = b.hp - f.hp;
       const moved = !same(b.pos, f.pos);
       if (!moved && lostHp === 0 && f.alive) continue;
       const fx = clamp(f.pos[0]) + 0.5, fy = clamp(f.pos[1]) + 0.5;
-      const col = id === 'p1' ? '#3d8bff' : '#ff5a6e';
+      const col = SIDE_COLOR[sideOf(id)];
       if (moved) {
         this.svg.appendChild(svgEl('circle', { cx: fx, cy: fy, r: 0.34, fill: col, 'fill-opacity': 0.25, stroke: col, 'stroke-width': 0.07, 'stroke-dasharray': '0.12 0.1' }));
         const bx = b.pos[0] + 0.5, by = b.pos[1] + 0.5;
         this.svg.appendChild(svgEl('line', { x1: bx, y1: by, x2: fx, y2: fy, stroke: col, 'stroke-width': 0.08, 'stroke-dasharray': '0.1 0.1', 'stroke-linecap': 'round', opacity: 0.7 }));
       }
       let label = '';
-      if (!f.alive) label = final.units[id].pos[0] < 0 || final.units[id].pos[1] < 0 || final.units[id].pos[0] >= SIZE || final.units[id].pos[1] >= SIZE || isHole(final, f.pos) ? '💦' : '💀';
+      if (!f.alive) label = final.units[id].pos[0] < 0 || final.units[id].pos[1] < 0 || final.units[id].pos[0] >= this.size || final.units[id].pos[1] >= this.size || isHole(final, f.pos) ? '💦' : '💀';
       else if (lostHp) label = `−${lostHp}`;
       if (label) this.pin([clamp(f.pos[0]), clamp(f.pos[1])], label, 'tag');
     }
@@ -180,21 +206,21 @@ export class Board {
     if (this.decorKey === key) return;
     this.decorKey = key;
     this.decorLayer.innerHTML = '';
-    for (let i = 0; i < SIZE * SIZE; i++) {
-      const p = [i % SIZE, Math.floor(i / SIZE)];
+    for (let i = 0; i < this.size * this.size; i++) {
+      const p = [i % this.size, Math.floor(i / this.size)];
       if (has(model.holes, p) || has(model.cracks, p) || has(model.springs, p) || model.rocks.some((r) => r.kind === 'mtn' && r.pos[0] === p[0] && r.pos[1] === p[1])) continue;
       let h = (Math.imul(i + 7, 2654435761) ^ Math.imul((model.seed || 1) + 13, 40503)) >>> 0;
       if (h % 100 > 22) continue; // poucos enfeites: casas limpas para tocar
       h = Math.imul(h, 1103515245) >>> 0;
       const d = document.createElement('i');
       d.className = `deco d${1 + (h % 4)}`;
-      d.style.left = `${p[0] * 20 + 3 + ((h >> 4) % 9)}%`;
-      d.style.top = `${p[1] * 20 + 8 + ((h >> 9) % 8)}%`;
+      d.style.left = `${p[0] * this.step + this.step * 0.15 + ((h >> 4) % 9) * this.step / 20}%`;
+      d.style.top = `${p[1] * this.step + this.step * 0.4 + ((h >> 9) % 8) * this.step / 20}%`;
       this.decorLayer.appendChild(d);
     }
     // bordas do fundo: montanhas, pinheiros e pedras, como as bordas do mapa dos jogos táticos
     const rim = [];
-    for (let i = 0; i < SIZE; i++) { rim.push([i + 0.5, -0.2]); rim.push([-0.2, i + 0.5]); }
+    for (let i = 0; i < this.size; i++) { rim.push([i + 0.5, -0.2]); rim.push([-0.2, i + 0.5]); }
     rim.push([-0.2, -0.2]);
     const kinds = [['r-peak', 28, 26], ['r-pine', 16, 24], ['r-rock', 22, 18], ['r-pine', 15, 22], ['r-peak', 25, 24]];
     rim.forEach((p, n) => {
@@ -204,13 +230,13 @@ export class Board {
       e.className = `rim ${cls}`;
       e.style.width = `${w}%`;
       e.style.height = `${h}%`;
-      e.style.left = `${p[0] * 20 - w / 2 + ((hh >> 5) % 5) - 2}%`;
-      e.style.top = `${p[1] * 20 - h + 6}%`;
+      e.style.left = `${p[0] * this.step - w / 2 + ((hh >> 5) % 5) - 2}%`;
+      e.style.top = `${p[1] * this.step - h + 6}%`;
       this.decorLayer.appendChild(e);
     });
   }
 
-  cell() { return this.grid.clientWidth / SIZE; }
+  cell() { return this.grid.clientWidth / this.size; }
 
   center(p) {
     const c = this.cell();
@@ -219,7 +245,7 @@ export class Board {
 
   // Explosão de partículas ('dust' poeira, 'star' estrelinhas, 'chip' pedaços de pedra).
   burst(p, kind = 'dust', n = 7) {
-    const [cx, cy] = this.center([Math.min(SIZE - 0.5, Math.max(-0.5, p[0])), Math.min(SIZE - 0.5, Math.max(-0.5, p[1]))]);
+    const [cx, cy] = this.center([Math.min(this.size - 0.5, Math.max(-0.5, p[0])), Math.min(this.size - 0.5, Math.max(-0.5, p[1]))]);
     const c = this.cell();
     for (let i = 0; i < n; i++) {
       const el = document.createElement('i');
@@ -361,15 +387,15 @@ export class Board {
       this.svg.appendChild(cross);
     }
     if (GLYPH[v.type]) this.pin(target, GLYPH[v.type], 'glyph');
-    if (v.n) this.pin(v.from, String(v.n), `num ${v.pid || ''}`); // selo de ordem na casa de quem ataca
+    if (v.n) this.pin(v.from, String(v.n), `num ${v.pid ? sideOf(v.pid) : ''}`); // selo de ordem na casa de quem ataca
   }
 
   // Ícone ou número "em pé" sobre uma casa (sempre de frente para a câmera, em qualquer visão).
   pin(pos, text, cls = '') {
     const d = document.createElement('div');
     d.className = 'pin';
-    d.style.left = `${(pos[0] + 0.5) * 20}%`;
-    d.style.top = `${(pos[1] + 0.5) * 20}%`;
+    d.style.left = `${(pos[0] + 0.5) * this.step}%`;
+    d.style.top = `${(pos[1] + 0.5) * this.step}%`;
     const s = document.createElement('span');
     s.className = `pin-in ${cls}`;
     s.textContent = text;
@@ -382,8 +408,8 @@ export class Board {
     d.className = 'pop';
     d.innerHTML = '<span></span>';
     d.firstChild.textContent = text;
-    d.style.left = `${(pos[0] + 0.5) * 20}%`;
-    d.style.top = `${(pos[1] + 0.5) * 20}%`;
+    d.style.left = `${(pos[0] + 0.5) * this.step}%`;
+    d.style.top = `${(pos[1] + 0.5) * this.step}%`;
     this.fxLayer.appendChild(d);
     setTimeout(() => d.remove(), ms);
   }

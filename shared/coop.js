@@ -6,7 +6,7 @@
 // Fase limpa → cada humano escolhe 1 de 3 melhorias → próxima fase, mais difícil.
 // Derrota: os dois humanos caídos. Quem cai volta na fase seguinte com 1 de vida.
 import {
-  rng, clone, canStand, validateUnitPlay, applyMove, runAction, PRIORITY, MAX_HOLES, mod,
+  rng, clone, canStand, validateUnitPlay, applyMove, runAction, actionPreview, PRIORITY, MAX_HOLES, mod,
 } from './rules.js';
 import { planBots } from './bots.js';
 
@@ -282,6 +282,19 @@ export function resolveRound(state, plans = {}, opts = {}) {
   s.round += 1;
   botTurn(s, ev);
   return { state: s, events: ev };
+}
+
+// Telegrafes dos bots para desenhar a mira: cada um com seu número na ordem em que vai resolver.
+export function telegraphs(state) {
+  return (state.pending || [])
+    .filter((p) => p.type !== 'WAIT' && state.units[p.pid] && state.units[p.pid].alive)
+    .map((p, i) => ({ p, i }))
+    .sort((a, b) => PRIORITY[a.p.type] - PRIORITY[b.p.type] || a.i - b.i)
+    .map(({ p }, n) => {
+      const v = actionPreview(state, p.pid, p.type, p.dir);
+      return v ? { ...v, n: n + 1, pid: p.pid } : null;
+    })
+    .filter(Boolean);
 }
 
 // Um humano escolhe sua melhoria. Quando os dois escolhem, a próxima fase começa.
