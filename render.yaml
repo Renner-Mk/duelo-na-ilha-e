@@ -1,0 +1,12 @@
+# Blueprint do Render: cria o Web Service automaticamente a partir do repositório.
+services:
+  - type: web
+    name: duelo-na-ilha
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 22

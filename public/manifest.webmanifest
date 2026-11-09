@@ -1,0 +1,14 @@
+{
+  "name": "Duelo na Ilha",
+  "short_name": "Duelo",
+  "description": "Duelo tático 1v1 em grade 5x5: empurre, puxe e bloqueie.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#7fcbff",
+  "theme_color": "#7fcbff",
+  "lang": "pt-BR",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

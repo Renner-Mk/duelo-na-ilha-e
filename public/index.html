@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#7fcbff">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<title>Duelo na Ilha</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="sky" aria-hidden="true">
+  <i class="sun"></i><i class="hills"></i>
+  <i class="cloud c1"></i><i class="cloud c2"></i><i class="cloud c3"></i>
+</div>
+
+<main id="app">
+  <section id="menu" class="screen">
+    <h1 class="logo"><span>Duelo</span><small>na Ilha</small></h1>
+    <p class="tag">Empurre, puxe e bloqueie. Quem cair da ilha perde.</p>
+    <div class="menu-btns">
+      <button class="btn big blue" id="btn-local">Jogar no mesmo aparelho</button>
+      <button class="btn big red" id="btn-create">Criar sala online</button>
+      <div class="join">
+        <input id="code" maxlength="4" placeholder="CÓDIGO" autocomplete="off" autocapitalize="characters" aria-label="Código da sala">
+        <button class="btn yellow" id="btn-join">Entrar</button>
+      </div>
+      <p id="menu-msg" class="msg" role="status"></p>
+    </div>
+    <details class="how">
+      <summary>Como jogar</summary>
+      <ol>
+        <li>O <b>atacante</b> anda 1 casa (se quiser) e escolhe um golpe. O rival vê a mira vermelha.</li>
+        <li>O <b>reator</b> também anda e escolhe um golpe. Os dois golpes aparecem marcados com a ordem e resolvem assim: Pedra, depois Gancho, depois Empurrão (empate: quem reagiu vai primeiro).</li>
+        <li>Se o atacante for puxado ou empurrado, o golpe sai do lugar onde ele estiver.</li>
+        <li>Terreno: 🏔️ montanha (2 golpes para quebrar), casa rachada (quebra e vira buraco se alguém for jogado nela; ninguém anda nela), 🍄 mola (quem for empurrado nela voa mais 2 casas).</li>
+        <li>Zere o HP do rival ou jogue ele pra fora da ilha ou num buraco.</li>
+      </ol>
+    </details>
+  </section>
+
+  <section id="game" class="screen" hidden>
+    <header class="hud">
+      <div class="pl p1"><b>Azul</b></div>
+      <div class="turn"><span id="turn">Turno 1</span><button id="btn-mute" class="icon" aria-label="Som" title="Som">🔊</button></div>
+      <div class="pl p2"><b>Vermelho</b></div>
+    </header>
+    <p id="banner" class="banner" role="status"></p>
+    <div id="board" class="board-wrap"></div>
+    <div id="bar" class="bar">
+      <ol id="steps" class="steps" aria-label="Passos do turno">
+        <li><b>1</b> Mover <em>opcional</em></li><li><b>2</b> Golpe</li><li><b>3</b> Direção</li><li><b>4</b> Confirmar</li>
+      </ol>
+      <div class="acts" role="group" aria-label="Ação">
+        <button class="act" data-act="PUSH"><i>🥊</i><span>Empurrão</span><kbd>1</kbd></button>
+        <button class="act" data-act="HOOK"><i>🪝</i><span>Gancho</span><kbd>2</kbd></button>
+        <button class="act" data-act="ROCK"><i>🪨</i><span>Pedra</span><kbd>3</kbd></button>
+        <button class="act" data-act="WAIT"><i>💤</i><span>Esperar</span><kbd>4</kbd></button>
+      </div>
+      <p id="hint" class="hint"></p>
+      <p id="preview" class="preview empty"></p>
+      <p class="rule">Ordem dos golpes: Pedra → Gancho → Empurrão. Empate: quem reagiu vai primeiro.</p>
+      <div class="row">
+        <button class="btn" id="btn-move">Mover</button>
+        <button class="btn" id="btn-clear" disabled>Limpar</button>
+        <button class="btn green" id="btn-confirm" disabled>Confirmar</button>
+      </div>
+    </div>
+    <details class="log"><summary>Últimas jogadas</summary><ol id="log"></ol></details>
+  </section>
+</main>
+
+<div id="wait" class="overlay" hidden>
+  <div class="card">
+    <p class="msg">Sala criada. Passe o código ao rival:</p>
+    <p class="code" id="wait-code" aria-live="polite"></p>
+    <button class="btn green" id="wait-copy">Copiar link</button>
+    <p class="msg" id="wait-msg">Aguardando o rival entrar…</p>
+    <button class="btn" id="wait-cancel">Cancelar</button>
+  </div>
+</div>
+<div id="pass" class="overlay" hidden>
+  <div class="card">
+    <p class="big-text" id="pass-text"></p>
+    <button class="btn big green" id="pass-ok">Estou pronto</button>
+  </div>
+</div>
+<div id="end" class="overlay" hidden>
+  <div class="card">
+    <p class="big-text" id="end-title"></p>
+    <p id="end-sub" class="msg"></p>
+    <button class="btn big green" id="end-again">Revanche</button>
+    <button class="btn" id="end-menu">Menu</button>
+  </div>
+</div>
+<div id="confetti" aria-hidden="true"></div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script type="module" src="/js/main.js"></script>
+</body>
+</html>
