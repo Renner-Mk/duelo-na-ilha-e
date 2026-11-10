@@ -2,11 +2,13 @@ import { sleep } from './render.js';
 import { sfx } from './sfx.js';
 import { actionPreview } from '/shared/rules.js';
 
+// Vibra só depois de o jogador ter tocado na página (o navegador bloqueia antes disso).
+const vibrate = (p) => { if (navigator.userActivation && navigator.userActivation.hasBeenActive) navigator.vibrate?.(p); };
 const slow = () => !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // Reproduz o log de eventos passo a passo, partindo do modelo anterior.
 export async function playEvents(board, prev, events, ui = {}) {
-  const m = JSON.parse(JSON.stringify({ units: prev.units, rocks: prev.rocks, holes: prev.holes, cracks: prev.cracks, springs: prev.springs, seed: prev.seed }));
+  const m = JSON.parse(JSON.stringify({ units: prev.units, rocks: prev.rocks, holes: prev.holes, cracks: prev.cracks, springs: prev.springs, seed: prev.seed, size: prev.size }));
   const wait = (ms) => sleep(slow() ? ms : 10);
   let angry = null;
   let bumped = false; // evita 'BONK!' + 'TOC!' para o mesmo choque
@@ -18,6 +20,8 @@ export async function playEvents(board, prev, events, ui = {}) {
   board.clearPoses();
 
   for (const ev of events) {
+    // eventos de unidades que não existem neste modelo (ex.: inimigos de uma fase nova) não se animam
+    if ((ev.id && !m.units[ev.id]) || (ev.by && !m.units[ev.by])) continue;
     if (rope && ev.t !== 'hook' && ev.t !== 'pull') stopRope();
     switch (ev.t) {
       case 'move':
@@ -51,7 +55,7 @@ export async function playEvents(board, prev, events, ui = {}) {
       case 'hit':
         m.units[ev.id].hp = ev.hp; board.hurt(ev.id);
         board.burst(m.units[ev.id].pos, 'star', 6);
-        board.pop(m.units[ev.id].pos, `-${ev.dmg}`); navigator.vibrate?.(40); draw(); await wait(300); break;
+        board.pop(m.units[ev.id].pos, `-${ev.dmg}`); vibrate(40); draw(); await wait(300); break;
       case 'knock':
         board.burst(ev.from, 'dust', 6);
         m.units[ev.id].pos = ev.to; draw(); await wait(320); break;
@@ -105,7 +109,7 @@ export async function playEvents(board, prev, events, ui = {}) {
         board.pop(ev.at, 'Errou!'); sfx.whiff(); await wait(300); break;
       case 'fall':
         board.burst(ev.at, 'dust', 8);
-        m.units[ev.id].pos = ev.at; m.units[ev.id].alive = false; sfx.fall(); navigator.vibrate?.([60, 40, 120]); draw(); await wait(700); break;
+        m.units[ev.id].pos = ev.at; m.units[ev.id].alive = false; sfx.fall(); vibrate([60, 40, 120]); draw(); await wait(700); break;
       case 'ko':
         m.units[ev.id].alive = false; draw(); await wait(500); break;
       default: break;

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "node server/index.js",
-    "check": "node scripts/rules-check.mjs"
+    "check": "node scripts/rules-check.mjs && node scripts/coop-check.mjs && node scripts/online-check.mjs"
   },
   "dependencies": {
     "express": "^4.21.0",
@@ -13,5 +13,8 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.8.4"
   }
 }

@@ -1,7 +1,9 @@
-// Regras puras do Duelo 5x5. Sem DOM, sem rede: usado pelo servidor e pelo navegador.
-// Coordenadas: [x, y], x = coluna (0..4), y = linha (0..4, 0 = topo).
+// Regras puras do Duelo na Ilha. Sem DOM, sem rede: usado pelo servidor e pelo navegador.
+// Coordenadas: [x, y], x = coluna, y = linha (0 = topo). O tamanho do tabuleiro vem de `state.size` (5 no duelo).
+// Unidades: { id, team, kind, pos, hp, maxHp, alive, mods }. `mods` guarda as melhorias do modo coop
+// (bônus aditivos: pushDmg, pushKnock, hookRange, hookPull, dashRange, dashDmg, moveRange, shield, heavy).
 
-export const SIZE = 5;
+export const SIZE = 5; // tamanho padrão (duelo)
 export const MAX_HP = 3;
 export const HOOK_RANGE = 3;
 export const HOOK_PULL = 2;
@@ -32,8 +34,8 @@ export const LAYOUTS = [
   { name: 'Cruzamento', holes: [[0, 2]], mtn: [[2, 2]], springs: [[1, 1]] },
 ];
 
-const mirror = (p) => [SIZE - 1 - p[0], SIZE - 1 - p[1]];
-function expand(list = []) {
+function expand(list = [], size = SIZE) {
+  const mirror = (p) => [size - 1 - p[0], size - 1 - p[1]];
   const seen = new Set();
   const out = [];
   for (const p of list.flatMap((q) => [q, mirror(q)])) {
@@ -46,11 +48,13 @@ function expand(list = []) {
 // ---------- utilidades ----------
 export const add = (a, b) => [a[0] + b[0], a[1] + b[1]];
 export const eq = (a, b) => !!a && !!b && a[0] === b[0] && a[1] === b[1];
-export const inBounds = (p) => p[0] >= 0 && p[1] >= 0 && p[0] < SIZE && p[1] < SIZE;
+export const inBounds = (p, size = SIZE) => p[0] >= 0 && p[1] >= 0 && p[0] < size && p[1] < size;
+// Bônus de melhoria de uma unidade (0 se não tiver).
+export const mod = (u, key) => (u && u.mods && u.mods[key]) || 0;
 export const other = (pid) => (pid === 'p1' ? 'p2' : 'p1');
-const clone = (s) => JSON.parse(JSON.stringify(s));
+export const clone = (s) => JSON.parse(JSON.stringify(s));
 
-function rng(seed) {
+export function rng(seed) {
   let a = seed >>> 0;
   return () => {
     a = (a + 0x6d2b79f5) >>> 0;
@@ -77,7 +81,7 @@ export function isSpring(s, p) {
   return (s.springs || []).some((c) => eq(c, p));
 }
 export function isFree(s, p) {
-  return inBounds(p) && !isHole(s, p) && !rockAt(s, p) && !unitAt(s, p);
+  return inBounds(p, s.size) && !isHole(s, p) && !rockAt(s, p) && !unitAt(s, p);
 }
 // Andar por conta própria: não vale pisar em casa rachada (ela só quebra quando alguém é jogado nela).
 export function canStand(s, p) {
@@ -105,8 +109,8 @@ export function createMatch(seed = Date.now(), firstAttacker = 'p1', layoutIndex
     attacker: firstAttacker,
     phase: 'DECLARE',
     units: {
-      p1: { id: 'p1', pos: [2, 4], hp: MAX_HP, alive: true },
-      p2: { id: 'p2', pos: [2, 0], hp: MAX_HP, alive: true },
+      p1: { id: 'p1', team: 'p1', kind: 'fox', pos: [2, 4], hp: MAX_HP, maxHp: MAX_HP, alive: true, mods: {} },
+      p2: { id: 'p2', team: 'p2', kind: 'cat', pos: [2, 0], hp: MAX_HP, maxHp: MAX_HP, alive: true, mods: {} },
     },
     rocks: expand(L.mtn).map((pos) => ({ pos, hp: 2, kind: 'mtn' })),
     holes,
@@ -119,10 +123,23 @@ export function createMatch(seed = Date.now(), firstAttacker = 'p1', layoutIndex
 // ---------- jogadas legais ----------
 export function legalMoves(s, pid) {
   const u = s.units[pid];
+  const range = 1 + mod(u, 'moveRange'); // "passo longo" amplia o alcance, sempre por casas livres
   const res = [];
-  for (const d of DIR_NAMES) {
-    const to = add(u.pos, DIRS[d]);
-    if (canStand(s, to)) res.push(to);
+  const seen = new Set([u.pos.join(',')]);
+  let frontier = [u.pos];
+  for (let step = 0; step < range; step++) {
+    const next = [];
+    for (const from of frontier) {
+      for (const d of DIR_NAMES) {
+        const to = add(from, DIRS[d]);
+        const k = to.join(',');
+        if (seen.has(k) || !canStand(s, to)) continue;
+        seen.add(k);
+        res.push(to);
+        next.push(to);
+      }
+    }
+    frontier = next;
   }
   return res;
 }
@@ -132,8 +149,7 @@ export function legalDirs(s, type, from) {
   if (type === 'WAIT') return [];
   return DIR_NAMES.filter((d) => {
     const t = add(from, DIRS[d]);
-    if (!inBounds(t)) return false;
-    return true;
+    return inBounds(t, s.size);
   });
 }
 
@@ -141,7 +157,13 @@ export function legalDirs(s, type, from) {
 export function validatePlay(s, pid, play) {
   if (s.phase === 'OVER') return 'Partida encerrada';
   if (activePlayer(s) !== pid) return 'Não é sua vez';
+  return validateUnitPlay(s, pid, play);
+}
+
+// Valida só a jogada da unidade (movimento + golpe), sem olhar fase ou vez. Serve ao duelo e ao coop.
+export function validateUnitPlay(s, pid, play) {
   const u = s.units[pid];
+  if (!u || !u.alive) return 'Unidade fora de combate';
   let from = u.pos;
   const mv = play && play.movement;
   if (mv && mv.to) {
@@ -162,6 +184,11 @@ export function validatePlay(s, pid, play) {
 // ---------- resolução ----------
 function damageUnit(s, u, n, ev, cause) {
   if (!u.alive) return;
+  if (n > 0 && mod(u, 'shield') > 0) { // escudo anula o próximo dano
+    u.mods.shield -= 1;
+    ev.push({ t: 'shield', id: u.id });
+    return;
+  }
   u.hp = Math.max(0, u.hp - n);
   ev.push({ t: 'hit', id: u.id, dmg: n, hp: u.hp, cause });
   if (u.hp === 0) {
@@ -183,7 +210,7 @@ function damageRock(s, rock, ev) {
 function fall(s, u, at, ev) {
   u.pos = [...at];
   u.alive = false;
-  ev.push({ t: 'fall', id: u.id, at: [...at], off: !inBounds(at) });
+  ev.push({ t: 'fall', id: u.id, at: [...at], off: !inBounds(at, s.size) });
 }
 
 // Unidade acabou de parar numa casa: buraco derruba; casa rachada quebra e derruba. Retorna true se caiu.
@@ -205,7 +232,7 @@ function land(s, u, ev) {
 // Um passo forçado (empurrão/lançamento) na direção d. Retorna 'moved' | 'blocked' | 'dead'.
 function forcedStep(s, u, d, ev, evType) {
   const dest = add(u.pos, DIRS[d]);
-  if (!inBounds(dest)) {
+  if (!inBounds(dest, s.size)) {
     ev.push({ t: evType, id: u.id, from: [...u.pos], to: dest });
     fall(s, u, dest, ev);
     return 'dead';
@@ -229,25 +256,34 @@ function forcedStep(s, u, d, ev, evType) {
   return land(s, u, ev) ? 'dead' : 'moved';
 }
 
-// Empurra a unidade 1 casa na direção d. Mola: arremessa mais 2 casas na mesma direção.
-function knockback(s, u, d, ev) {
-  if (!u.alive) return;
-  if (forcedStep(s, u, d, ev, 'knock') !== 'moved') return;
-  if (!isSpring(s, u.pos)) return;
-  ev.push({ t: 'spring', id: u.id, at: [...u.pos] });
-  for (let i = 0; i < 2; i++) {
-    if (forcedStep(s, u, d, ev, 'launch') !== 'moved') return;
+// Quantas casas o alvo recua: 1 + melhoria de quem bate - "casca grossa" de quem apanha (mínimo 0).
+function knockDist(actor, target) {
+  return Math.max(0, 1 + mod(actor, 'pushKnock') - mod(target, 'heavy'));
+}
+
+// Empurra a unidade `dist` casas na direção d. Mola: arremessa mais 2 casas na mesma direção.
+function knockback(s, u, d, ev, dist = 1) {
+  for (let i = 0; i < dist; i++) {
+    if (!u.alive) return;
+    if (forcedStep(s, u, d, ev, 'knock') !== 'moved') return;
+    if (isSpring(s, u.pos)) {
+      ev.push({ t: 'spring', id: u.id, at: [...u.pos] });
+      for (let j = 0; j < 2; j++) {
+        if (forcedStep(s, u, d, ev, 'launch') !== 'moved') return;
+      }
+      return;
+    }
   }
 }
 
 function doPush(s, actor, d, ev) {
   const tile = add(actor.pos, DIRS[d]);
   ev.push({ t: 'push', by: actor.id, dir: d, tile });
-  if (!inBounds(tile)) return ev.push({ t: 'whiff', by: actor.id, at: tile });
+  if (!inBounds(tile, s.size)) return ev.push({ t: 'whiff', by: actor.id, at: tile });
   const target = unitAt(s, tile);
   if (target) {
-    damageUnit(s, target, 1, ev, 'push');
-    return knockback(s, target, d, ev);
+    damageUnit(s, target, 1 + mod(actor, 'pushDmg'), ev, 'push');
+    return knockback(s, target, d, ev, knockDist(actor, target));
   }
   const rock = rockAt(s, tile);
   if (rock) return damageRock(s, rock, ev);
@@ -255,12 +291,12 @@ function doPush(s, actor, d, ev) {
 }
 
 // Casas cobertas pelo gancho a partir de `from` (para até borda ou pedra).
-export function hookLine(s, from, d) {
+export function hookLine(s, from, d, range = HOOK_RANGE) {
   const tiles = [];
   let p = from;
-  for (let i = 0; i < HOOK_RANGE; i++) {
+  for (let i = 0; i < range; i++) {
     p = add(p, DIRS[d]);
-    if (!inBounds(p)) break;
+    if (!inBounds(p, s.size)) break;
     tiles.push(p);
     if (rockAt(s, p) || unitAt(s, p)) break;
   }
@@ -268,13 +304,13 @@ export function hookLine(s, from, d) {
 }
 
 function doHook(s, actor, d, ev) {
-  const tiles = hookLine(s, actor.pos, d);
+  const tiles = hookLine(s, actor.pos, d, HOOK_RANGE + mod(actor, 'hookRange'));
   const last = tiles[tiles.length - 1];
   const target = last ? unitAt(s, last) : null;
   ev.push({ t: 'hook', by: actor.id, dir: d, tiles, hit: target ? target.id : last && rockAt(s, last) ? 'rock' : null });
   if (!target) return ev.push({ t: 'whiff', by: actor.id, at: last || add(actor.pos, DIRS[d]) });
   const back = [-DIRS[d][0], -DIRS[d][1]];
-  const steps = Math.min(HOOK_PULL, tiles.length - 1);
+  const steps = Math.min(HOOK_PULL + mod(actor, 'hookPull'), tiles.length - 1);
   for (let i = 0; i < steps && target.alive; i++) {
     const dest = add(target.pos, back);
     ev.push({ t: 'pull', id: target.id, from: [...target.pos], to: dest });
@@ -285,14 +321,14 @@ function doHook(s, actor, d, ev) {
 
 // Caminho da investida: até DASH_RANGE casas; para antes de borda ou pedra, e se encontrar um rival
 // no caminho para colado nele e o atinge. Buraco e casa rachada NÃO bloqueiam: quem entra neles cai.
-export function dashPath(s, from, d) {
+export function dashPath(s, from, d, range = DASH_RANGE) {
   const tiles = [];
   let hit = null;
   let falls = false;
   let p = from;
-  for (let i = 0; i < DASH_RANGE; i++) {
+  for (let i = 0; i < range; i++) {
     const next = add(p, DIRS[d]);
-    if (!inBounds(next) || rockAt(s, next)) break;
+    if (!inBounds(next, s.size) || rockAt(s, next)) break;
     const u = unitAt(s, next);
     if (u) { hit = u; break; }
     tiles.push(next);
@@ -303,7 +339,7 @@ export function dashPath(s, from, d) {
 }
 
 function doDash(s, actor, d, ev) {
-  const { tiles, hit } = dashPath(s, actor.pos, d);
+  const { tiles, hit } = dashPath(s, actor.pos, d, DASH_RANGE + mod(actor, 'dashRange'));
   if (tiles.length) {
     const from = [...actor.pos];
     actor.pos = [...tiles[tiles.length - 1]];
@@ -312,13 +348,13 @@ function doDash(s, actor, d, ev) {
   }
   if (hit) {
     ev.push({ t: 'charge', by: actor.id, dir: d, tile: [...hit.pos] });
-    damageUnit(s, hit, 1, ev, 'dash');
-    return knockback(s, hit, d, ev);
+    damageUnit(s, hit, 1 + mod(actor, 'dashDmg'), ev, 'dash');
+    return knockback(s, hit, d, ev, knockDist(actor, hit));
   }
   if (!tiles.length) ev.push({ t: 'whiff', by: actor.id, at: add(actor.pos, DIRS[d]) });
 }
 
-function runAction(s, pid, type, d, ev) {
+export function runAction(s, pid, type, d, ev) {
   const actor = s.units[pid];
   if (!actor.alive) return;
   if (type === 'PUSH') doPush(s, actor, d, ev);
@@ -327,7 +363,7 @@ function runAction(s, pid, type, d, ev) {
   else ev.push({ t: 'wait', by: pid });
 }
 
-function applyMove(s, pid, mv, ev) {
+export function applyMove(s, pid, mv, ev) {
   if (!mv || !mv.to) return;
   const u = s.units[pid];
   ev.push({ t: 'move', id: pid, from: [...u.pos], to: [...mv.to] });
@@ -412,11 +448,11 @@ export function actionPreview(s, pid, type, d) {
   const u = s.units[pid];
   if (!u || !u.alive || !type || type === 'WAIT' || !d) return null;
   if (type === 'HOOK') {
-    const tiles = hookLine(s, u.pos, d);
+    const tiles = hookLine(s, u.pos, d, HOOK_RANGE + mod(u, 'hookRange'));
     return { type, dir: d, from: [...u.pos], tiles, target: tiles[tiles.length - 1] || null };
   }
   if (type === 'DASH') {
-    const { tiles, hit } = dashPath(s, u.pos, d);
+    const { tiles, hit } = dashPath(s, u.pos, d, DASH_RANGE + mod(u, 'dashRange'));
     const all = hit ? [...tiles, hit.pos] : tiles;
     return { type, dir: d, from: [...u.pos], tiles: all, target: all[all.length - 1] || add(u.pos, DIRS[d]) };
   }
@@ -450,7 +486,7 @@ export function previewOutcome(state, pid, p) {
 export function summarize(events) {
   const out = { dmg: { p1: 0, p2: 0 }, fell: [], ko: [], moved: [] };
   for (const e of events) {
-    if (e.t === 'hit') out.dmg[e.id] += e.dmg;
+    if (e.t === 'hit') out.dmg[e.id] = (out.dmg[e.id] || 0) + e.dmg;
     else if (e.t === 'fall') out.fell.push(e.id);
     else if (e.t === 'ko') out.ko.push(e.id);
     else if (e.t === 'knock' || e.t === 'pull') out.moved.push(e.id);

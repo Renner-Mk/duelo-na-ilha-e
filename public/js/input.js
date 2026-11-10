@@ -36,7 +36,8 @@ const DIR_KEYS = { ArrowUp: 'UP', ArrowDown: 'DOWN', ArrowLeft: 'LEFT', ArrowRig
 const ACT_KEYS = { 1: 'PUSH', 2: 'HOOK', 3: 'DASH', 4: 'WAIT' };
 
 export class Input {
-  constructor(board, els, onSubmit, onChange) {
+  constructor(board, els, onSubmit, onChange, opts = {}) {
+    this.opts = opts; // { preview(state, pid, play), describe(outcome) } para outros modos (coop)
     this.board = board;
     this.els = els;
     this.onSubmit = onSubmit;
@@ -167,10 +168,11 @@ export class Input {
   computeOutcome() {
     this.outcome = null;
     if (!this.ready()) return;
-    const o = previewOutcome(this.state, this.pid, {
+    const plan = {
       movement: this.move ? { to: this.move } : null,
       action: { type: this.act, direction: this.act === 'WAIT' ? null : this.dir },
-    });
+    };
+    const o = this.opts.preview ? this.opts.preview(this.state, this.pid, plan) : previewOutcome(this.state, this.pid, plan);
     if (o) this.outcome = { ...o, by: this.pid };
   }
 
@@ -180,7 +182,8 @@ export class Input {
     els.acts.forEach((b) => b.classList.toggle('on', this.active && b.dataset.act === this.act));
     els.moveBtn.classList.toggle('on', this.active && this.mode === 'move');
     els.confirm.disabled = !this.ready();
-    els.hint.textContent = this.active ? HINTS[this.act || 'move'] : '';
+    const hints = this.opts.hints ? this.opts.hints(this.state && this.state.units[this.pid]) : HINTS;
+    els.hint.textContent = this.active ? hints[this.act || 'move'] || '' : '';
     if (els.clear) els.clear.disabled = !this.active || (!this.move && !this.act);
     if (els.steps) {
       // 1 Mover (opcional) · 2 Golpe · 3 Direção · 4 Confirmar
@@ -194,7 +197,7 @@ export class Input {
     }
     this.computeOutcome();
     if (els.preview) {
-      els.preview.textContent = this.active && this.outcome ? describe(this.outcome) : '';
+      els.preview.textContent = this.active && this.outcome ? (this.opts.describe || describe)(this.outcome) : '';
       els.preview.classList.toggle('empty', !(this.active && this.outcome));
       els.bar.classList.toggle('has-preview', !!(this.active && this.outcome));
     }

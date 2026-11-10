@@ -28,6 +28,8 @@
     <div class="menu-btns">
       <button class="btn big blue" id="btn-local">Jogar no mesmo aparelho</button>
       <button class="btn big red" id="btn-create">Criar sala online</button>
+      <button class="btn big yellow" id="btn-coop-create">Coop online com um amigo</button>
+      <button class="btn big" id="btn-coop-local">Coop contra bots (1 aparelho)</button>
       <div class="join">
         <input id="code" maxlength="4" placeholder="CÓDIGO" autocomplete="off" autocapitalize="characters" aria-label="Código da sala">
         <button class="btn yellow" id="btn-join">Entrar</button>
@@ -53,6 +55,7 @@
       <div class="pl p2"><b>Vermelho</b></div>
     </header>
     <p id="banner" class="banner" role="status"></p>
+    <p id="ups" class="ups" hidden></p>
     <div id="board" class="board-wrap"></div>
     <div id="bar" class="bar">
       <ol id="steps" class="steps" aria-label="Passos do turno">
@@ -86,6 +89,14 @@
     <button class="btn" id="wait-cancel">Cancelar</button>
   </div>
 </div>
+<div id="upgrade" class="overlay" hidden>
+  <div class="card">
+    <p class="big-text" id="upgrade-title"></p>
+    <p class="msg" id="upgrade-sub">Escolha 1 melhoria para o seu personagem</p>
+    <div class="ucards" id="upgrade-cards"></div>
+  </div>
+</div>
+<div id="splash" aria-hidden="true"></div>
 <div id="pass" class="overlay" hidden>
   <div class="card">
     <p class="big-text" id="pass-text"></p>
